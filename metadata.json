@@ -1,0 +1,5 @@
+{
+  "name": "Emerson Mortgage Calculator",
+  "description": "A comprehensive mortgage calculator that helps you plan your amortization schedule. Compare monthly vs. bi-weekly payments, account for extra payments, and get AI-powered insights to pay off your loan faster.",
+  "requestFramePermissions": []
+}
