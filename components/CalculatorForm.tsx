@@ -9,7 +9,7 @@ interface CalculatorFormProps {
 
 const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: string; icon?: string; description?: string }> = ({ label, icon, description, ...props }) => (
   <div className="w-full">
-    <label htmlFor={props.id || props.name} className="block text-sm font-medium text-gray-700 truncate">{label}</label>
+    <label htmlFor={props.id || props.name} className="block text-sm font-medium text-gray-700">{label}</label>
     <div className="mt-1 relative rounded-md shadow-sm">
       {icon && <div className="pointer-events-none absolute inset-y-0 left-0 pl-3 flex items-center"><span className="text-gray-500 sm:text-sm">{icon}</span></div>}
       <input

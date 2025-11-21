@@ -240,7 +240,7 @@ const PaymentBreakdown: React.FC<{ results: CalculationResults }> = ({ results }
                                 paddingAngle={5}
                             >
                                 {paymentData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length] stroke={COLORS[index % COLORS.length]} />
+                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke={COLORS[index % COLORS.length]} />
                                 ))}
                             </Pie>
                             <Tooltip formatter={(value: number) => {
