@@ -6,6 +6,7 @@ import autoTable from 'jspdf-autotable';
 import { CalculatorForm } from './components/CalculatorForm';
 import { GeminiInsights } from './components/GeminiInsights';
 import { calculateAllScenarios } from './services/mortgageCalculator';
+import { getSnapshotAtYear } from './services/geminiService';
 import type { MortgageParams, CalculationResults, AmortizationEntry } from './types';
 
 const formatCurrency = (value: number | null | undefined): string => {
@@ -255,11 +256,10 @@ const PaymentBreakdown: React.FC<{ results: CalculationResults }> = ({ results }
     );
 };
 
-const AmortizationSchedule: React.FC<{ results: CalculationResults, params: MortgageParams }> = ({ results, params }) => {
+const AmortizationSchedule: React.FC<{ results: CalculationResults, params: MortgageParams, appreciationRate: number, setAppreciationRate: (rate: number) => void }> = ({ results, params, appreciationRate, setAppreciationRate }) => {
     const [activeTab, setActiveTab] = useState<'monthly' | 'biWeekly' | 'biWeeklyWithExtra'>('monthly');
     const [chartTab, setChartTab] = useState<'balance' | 'equity'>('balance');
     const [equityScenario, setEquityScenario] = useState<'monthly' | 'biWeekly' | 'biWeeklyWithExtra'>('monthly');
-    const [appreciationRate, setAppreciationRate] = useState(3.5);
     const [showSchedule, setShowSchedule] = useState(false);
 
     const yearlyBalanceData = useMemo(() => {
@@ -447,7 +447,7 @@ const AmortizationSchedule: React.FC<{ results: CalculationResults, params: Mort
                 ) : (
                     <>
                         <div className="flex flex-wrap justify-center items-center gap-2 sm:space-x-4 mb-4 absolute top-0 left-0 right-0 z-10">
-                            <div className="flex items-center bg-white/90 backdrop-blur-sm rounded-md p-1 shadow-sm">
+                            <div className="flex items-center rounded-md p-1">
                                 <span className="text-xs text-gray-600 mr-2 font-medium">Appreciation %</span>
                                 <input 
                                     type="number" 
@@ -598,6 +598,7 @@ export default function App() {
   const [params, setParams] = useState<MortgageParams | null>(null);
   const [results, setResults] = useState<CalculationResults | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [appreciationRate, setAppreciationRate] = useState(3.5);
   
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -612,291 +613,409 @@ export default function App() {
   };
 
   const generatePdfDocument = async (
-    results: CalculationResults,
-    params: MortgageParams,
-    setStatus: (status: string) => void
-  ): Promise<Blob> => {
-    setStatus('Initializing Report...');
-    await new Promise(resolve => setTimeout(resolve, 50));
-    
-    const doc = new jsPDF({ orientation: 'p', unit: 'pt', format: 'a4' });
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 40;
-    let y = 0;
+  results: CalculationResults,
+  params: MortgageParams,
+  setStatus: (status: string) => void
+): Promise<Blob> => {
+  setStatus('Initializing Report...');
+  await new Promise(resolve => setTimeout(resolve, 50));
 
-    const brandDark: [number, number, number] = [0, 45, 78];
-    const brandSecondary: [number, number, number] = [242, 169, 0];
-    const brandLight: [number, number, number] = [240, 247, 255];
+  const doc = new jsPDF({ orientation: 'p', unit: 'pt', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 40;
+  let y = margin;
 
+  // Brand Colors
+  const brandDark: [number, number, number] = [0, 45, 78];
+  const brandSecondary: [number, number, number] = [242, 169, 0]; // KEEP YELLOW
+  const textGray: [number, number, number] = [60, 60, 60];
+  const lightGray: [number, number, number] = [200, 200, 200];
+  const ultraLight: [number, number, number] = [248, 250, 252];
 
-    const addSectionTitle = (title: string) => {
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(brandDark[0], brandDark[1], brandDark[2]);
-        doc.text(title, margin, y);
-        y += 8;
-        
-        doc.setDrawColor(brandSecondary[0], brandSecondary[1], brandSecondary[2]);
-        doc.setLineWidth(1.5);
-        doc.line(margin, y, margin + 70, y);
-        y += 25;
-    };
-
-    const addHeader = (isFirstPage: boolean = false) => {
-        if (isFirstPage) {
-            y = margin;
-            doc.setFontSize(9);
-            doc.setFont('helvetica', 'italic');
-            doc.setTextColor(150, 150, 150);
-            const dateStr = `Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`;
-            doc.text(dateStr, margin, y);
-            y += 35;
-
-            doc.setFontSize(22);
-            doc.setFont('helvetica', 'bold');
-            doc.setTextColor(brandDark[0], brandDark[1], brandDark[2]);
-            doc.text("Mortgage Scenario Report", margin, y);
-            y += 25;
-        }
-    };
-    
-    const addFooter = () => {
-        const pageCount = (doc as any).internal.getNumberOfPages();
-        for(let i = 1; i <= pageCount; i++) {
-            doc.setPage(i);
-            const footerY = pageHeight - margin + 10;
-            
-            doc.setDrawColor(220, 220, 220);
-            doc.setLineWidth(0.5);
-            doc.line(margin, footerY, pageWidth - margin, footerY);
-
-            doc.setFontSize(9);
-            doc.setFont('helvetica', 'normal');
-            doc.setTextColor(100, 100, 100);
-
-            const footerText = `Emerson Pinto | (609) 286-7269 | emerson.pinto@kw.com`;
-            doc.text(footerText, margin, footerY + 20);
-            doc.text(`Page ${i} of ${pageCount}`, pageWidth - margin, footerY + 20, { align: 'right' });
-        }
-    };
-    
-    // --- PAGE 1: SUMMARY ---
-    setStatus('Building Page 1: Summary...');
-    await new Promise(resolve => setTimeout(resolve, 50));
-    addHeader(true);
-
-    addSectionTitle('Loan Details');
-    
-    const loanAmount = params.homePrice - params.downPayment;
-    const downPaymentPercent = params.homePrice > 0 ? (params.downPayment / params.homePrice) * 100 : 0;
-    const loanDetails = [
-        ['Home Price:', formatCurrency(params.homePrice)],
-        ['Down Payment:', `${formatCurrency(params.downPayment)} (${downPaymentPercent.toFixed(1)}%)`],
-        ['Loan Amount:', formatCurrency(loanAmount)],
-        ['Interest Rate:', `${params.interestRate}%`],
-        ['Loan Term:', `${params.loanTerm} Years`],
-        ['Property Taxes:', `${formatCurrency(params.propertyTaxes)} / year`],
-        ["Homeowner's Insurance:", `${formatCurrency(params.homeownersInsurance)} / year`],
-    ];
-    
-    autoTable(doc, {
-        startY: y - 22,
-        body: loanDetails,
-        theme: 'plain',
-        styles: { cellPadding: {top: 4, right: 2, bottom: 4, left: 2}, fontSize: 10 },
-        columnStyles: { 
-            0: { fontStyle: 'normal', textColor: [100,100,100] },
-            1: { halign: 'right', fontStyle: 'bold', textColor: brandDark }
-        }
-    });
-    y = (doc as any).lastAutoTable.finalY + 35;
-    
-    const sanitize = (val: any, fallback: string | number = 'N/A'): string => {
-        if (val === null || val === undefined || (typeof val === 'number' && !isFinite(val))) {
-            return fallback.toString();
-        }
-        return val.toString();
-    };
-
-    const monthlySummary = results.monthly.summary;
-    const biWeeklySummary = results.biWeekly.summary;
-    const biWeeklyExtraSummary = results.biWeeklyWithExtra.summary;
-    
-    const monthlyPayment = monthlySummary.totalMonthlyPayment || 0;
-    const biWeeklyPAndI = (biWeeklySummary.principalAndInterest || 0) / 2;
-    const monthlyEscrow = (monthlySummary.taxes || 0) + (monthlySummary.insurance || 0) + (monthlySummary.hoa || 0) + (monthlySummary.pmi || 0);
-    const biWeeklyEscrow = monthlyEscrow * 12 / 26;
-    const biWeeklyPayment = biWeeklyPAndI + biWeeklyEscrow;
-
-    let annualExtraPayment = 0;
-    if (params.extraPayment > 0) {
-        switch (params.extraPaymentFrequency) {
-            case 'weekly': annualExtraPayment = params.extraPayment * 52; break;
-            case 'bi-weekly': annualExtraPayment = params.extraPayment * 26; break;
-            case 'monthly': annualExtraPayment = params.extraPayment * 12; break;
-            case 'annually': annualExtraPayment = params.extraPayment; break;
-        }
-    }
-    const extraPerBiWeeklyPeriod = annualExtraPayment / 26;
-    
-    let biWeeklyAcceleratedDisplay = extraPerBiWeeklyPeriod > 0
-        ? `${formatCurrency(biWeeklyPayment)} + ${formatCurrency(extraPerBiWeeklyPeriod)}`
-        : formatCurrency(biWeeklyPayment);
-
-
-    const getOneTimePdfMsg = (match: boolean) => {
-         if (params.oneTimePayment && params.oneTimePayment > 0 && match) {
-             return ` + 1x ${formatCurrency(params.oneTimePayment)}`;
-         }
-         return '';
-    };
-
-    const comparisonBody = [
-        ['Payment', 
-            formatCurrency(monthlyPayment) + getOneTimePdfMsg(params.oneTimePaymentMode === 'monthly' || params.oneTimePaymentMode === 'all'), 
-            formatCurrency(biWeeklyPayment) + getOneTimePdfMsg(params.oneTimePaymentMode === 'biWeekly' || params.oneTimePaymentMode === 'all'), 
-            biWeeklyAcceleratedDisplay + getOneTimePdfMsg(params.oneTimePaymentMode === 'biWeeklyWithExtra' || params.oneTimePaymentMode === 'all')
-        ],
-        ['Payoff Date', monthlySummary.payoffDate, biWeeklySummary.payoffDate, biWeeklyExtraSummary.payoffDate],
-        ['Time Saved', '(Baseline)', biWeeklySummary.timeSaved, biWeeklyExtraSummary.timeSaved],
-        ['Total Interest', formatCurrency(monthlySummary.totalInterest), formatCurrency(biWeeklySummary.totalInterest), formatCurrency(biWeeklyExtraSummary.totalInterest)],
-        ['Interest Savings', '(Baseline)', formatCurrency(biWeeklySummary.interestSaved), formatCurrency(biWeeklyExtraSummary.interestSaved)],
-    ].map(row => row.map(cell => sanitize(cell, 'N/A')));
-
-    addSectionTitle('Payment Scenario Comparison');
-    autoTable(doc, {
-        startY: y - 22,
-        head: [['Metric', 'Monthly', 'Bi-Weekly', 'Bi-Weekly v2.0']],
-        body: comparisonBody,
-        theme: 'striped',
-        styles: { cellPadding: 6, fontSize: 9, valign: 'middle', lineWidth: 0 },
-        headStyles: { 
-            fillColor: brandDark, 
-            textColor: [255, 255, 255], 
-            fontStyle: 'bold', 
-            halign: 'center',
-            lineWidth: { bottom: 0.5 },
-            lineColor: [180, 180, 180] 
-        },
-        alternateRowStyles: { fillColor: brandLight },
-        columnStyles: {
-            0: { halign: 'left', fontStyle: 'bold' },
-            1: { halign: 'right' },
-            2: { halign: 'right' },
-            3: { halign: 'right' }
-        },
-        willDrawCell: (data) => {
-            if (data.section === 'body' && data.column.index > 0) {
-                if (data.row.index === 3 || data.row.index === 4) { // Total Interest & Savings
-                    data.cell.styles.fontStyle = 'bold';
-                }
-                if (data.row.index === 4 && data.column.index > 0) { // Savings values
-                     if (data.cell.raw !== '(Baseline)') {
-                        data.cell.styles.textColor = [0, 150, 0]; // Green
-                     }
-                }
-            }
-        }
-    });
-    y = (doc as any).lastAutoTable.finalY + 35;
-    
-    // --- NEW SECTION: MONTHLY PAYMENT BREAKDOWN ---
-    setStatus('Adding Payment Breakdown...');
-    await new Promise(resolve => setTimeout(resolve, 50));
-
-    const firstMonth = results.monthly.schedule[0] || { principal: 0, interest: 0 };
-    const breakdownItems = [
-        { name: 'Principal', value: firstMonth.principal },
-        { name: 'Interest', value: firstMonth.interest },
-        { name: 'Taxes', value: monthlySummary.taxes },
-        { name: 'Insurance & HOA', value: monthlySummary.insurance + monthlySummary.hoa },
-        { name: 'PMI', value: monthlySummary.pmi },
-    ].filter(item => item.value > 0);
-    const breakdownSectionHeight = 60 + (breakdownItems.length * 20);
-
-    if (y > pageHeight - breakdownSectionHeight) {
-        doc.addPage();
-        y = margin;
-    }
-
-    addSectionTitle('Monthly Payment Breakdown');
-    const breakdownHeroY = y;
-    doc.setFontSize(28);
+  // Modern Title Renderer (yellow underline preserved)
+  const drawTitle = (text: string, yPos: number, xPos: number = margin) => {
+    doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(brandDark[0], brandDark[1], brandDark[2]);
-    doc.text(formatCurrency(monthlySummary.totalMonthlyPayment), margin, breakdownHeroY);
-    y = breakdownHeroY + 20;
+    doc.text(text, xPos, yPos);
 
-    const totalForPercentage = monthlySummary.totalMonthlyPayment > 0 ? monthlySummary.totalMonthlyPayment : 1;
+    // KEEP your yellow underline
+    doc.setDrawColor(brandSecondary[0], brandSecondary[1], brandSecondary[2]);
+    doc.setLineWidth(2);
+    doc.line(xPos, yPos + 7, xPos + 40, yPos + 7);
+
+    return yPos + 30;
+  };
+
+  // Minimal modern header
+  const addHeader = () => {
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
+    doc.setTextColor(140, 140, 140);
+    doc.text(
+      `Generated: ${new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })}`,
+      margin,
+      margin
+    );
 
-    for (const item of breakdownItems) {
-        const percentage = (item.value / totalForPercentage) * 100;
-        const itemText = `${item.name} (${percentage.toFixed(1)}%)`;
-        const valueText = formatCurrency(item.value);
+    doc.setFontSize(22);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(brandDark[0], brandDark[1], brandDark[2]);
+    doc.text('Mortgage Strategy Report', margin, margin + 22);
 
-        doc.setTextColor(100, 100, 100);
-        doc.text(itemText, margin, y);
-
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(brandDark[0], brandDark[1], brandDark[2]);
-        doc.text(valueText, pageWidth - margin, y, { align: 'right' });
-        
-        doc.setFont('helvetica', 'normal'); // Reset for next item
-        y += 20;
-    }
-
-    // --- PAGE 2: ANNUAL SUMMARY ---
-    setStatus('Compiling Annual Summary...');
-    await new Promise(resolve => setTimeout(resolve, 50));
-    
-    const annualSummaryBody = results.monthly.annualSummary.map(row => [
-        sanitize(row.year),
-        formatCurrency(row.principalPaid),
-        formatCurrency(row.totalPrincipalPaid),
-        formatCurrency(row.interestPaid),
-        formatCurrency(row.totalInterestPaid),
-        formatCurrency(row.endingBalance)
-    ]);
-
-    if (annualSummaryBody.length > 0) {
-        doc.addPage();
-        y = margin; // Reset Y for new page
-        addSectionTitle('Annual Amortization Summary (Monthly)');
-        autoTable(doc, {
-            startY: y - 22,
-            head: [['Year', 'Principal Paid', 'Total Principal', 'Interest Paid', 'Total Interest', 'Ending Balance']],
-            body: annualSummaryBody,
-            theme: 'striped',
-            styles: { cellPadding: 6, fontSize: 9, valign: 'middle', lineWidth: 0 },
-            headStyles: { 
-                fillColor: brandDark, 
-                textColor: [255, 255, 255], 
-                fontStyle: 'bold', 
-                halign: 'center',
-                lineWidth: { bottom: 0.5 },
-                lineColor: [180, 180, 180]  
-            },
-            alternateRowStyles: { fillColor: brandLight },
-            columnStyles: {
-                0: { halign: 'center' },
-                1: { halign: 'right' },
-                2: { halign: 'right' },
-                3: { halign: 'right' },
-                4: { halign: 'right' },
-                5: { halign: 'right' }
-            }
-        });
-    }
-    
-    setStatus('Finalizing Document...');
-    await new Promise(resolve => setTimeout(resolve, 50));
-    addFooter();
-
-    return doc.output('blob');
+    y = margin + 55;
   };
+
+  // Modern footer (clean, no border)
+  const addFooter = () => {
+    const pageCount = (doc as any).internal.getNumberOfPages();
+
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+
+      const footerY = pageHeight - 32;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(140, 140, 140);
+
+      doc.text(
+        'Emerson Pinto | (609) 286-7269 | emerson.pinto@kw.com',
+        margin,
+        footerY
+      );
+
+      doc.text(`Page ${i} of ${pageCount}`, pageWidth - margin, footerY, {
+        align: 'right',
+      });
+
+      if (i === 1) {
+        doc.setFontSize(8);
+        doc.text(
+          `Estimates only. Assumes ${appreciationRate}% appreciation & 8% closing costs.`,
+          margin,
+          footerY + 12
+        );
+      }
+    }
+  };
+
+  // Modern minimalist table defaults
+  const tableBase = {
+    theme: 'plain' as const,
+    styles: {
+      fontSize: 10,
+      cellPadding: 6,
+      lineWidth: 0,
+      textColor: textGray,
+    },
+    headStyles: {
+      fillColor: brandDark,
+      textColor: [255, 255, 255] as [number, number, number],
+      fontStyle: 'bold' as const,
+      halign: 'left' as const,
+      lineWidth: 0,
+    },
+    alternateRowStyles: {
+      fillColor: ultraLight,
+    },
+    bodyStyles: {
+      lineWidth: 0,
+    },
+  };
+
+  // START CONTENT
+  addHeader();
+
+  // TWO-COLUMN SECTION
+  setStatus('Generating Loan Analysis...');
+
+  const colWidth = (pageWidth - margin * 2 - 30) / 2;
+  const leftX = margin;
+  const rightX = margin + colWidth + 30;
+  const startTwoColY = y;
+
+  // LEFT: Loan Details
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(brandDark[0], brandDark[1], brandDark[2]);
+  doc.text('Loan Details', leftX, startTwoColY);
+
+  doc.setDrawColor(brandSecondary[0], brandSecondary[1], brandSecondary[2]);
+  doc.setLineWidth(2);
+  doc.line(leftX, startTwoColY + 4, leftX + 40, startTwoColY + 4);
+
+  const loanAmount = params.homePrice - params.downPayment;
+  const dpPercent = ((params.downPayment / params.homePrice) * 100).toFixed(1);
+
+  const loanDetailsBody = [
+    ['Home Price', formatCurrency(params.homePrice)],
+    [
+      'Down Payment',
+      `${formatCurrency(params.downPayment)} (${dpPercent}%)`,
+    ],
+    ['Loan Amount', formatCurrency(loanAmount)],
+    ['Rate / Term', `${params.interestRate}% / ${params.loanTerm} Years`],
+    ['Property Taxes', `${formatCurrency(params.propertyTaxes)}/yr`],
+    ['Insurance', `${formatCurrency(params.homeownersInsurance)}/yr`],
+  ];
+
+  autoTable(doc, {
+    ...tableBase,
+    margin: { left: leftX },
+    tableWidth: colWidth,
+    startY: startTwoColY + 18,
+    body: loanDetailsBody,
+    columnStyles: {
+      0: { fontStyle: 'bold', textColor: textGray },
+      1: { halign: 'right', textColor: brandDark },
+    },
+  });
+
+  const leftY = (doc as any).lastAutoTable.finalY;
+
+  // RIGHT: Monthly Breakdown
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(...brandDark);
+  doc.text('Monthly Breakdown', rightX, startTwoColY);
+
+  doc.line(rightX, startTwoColY + 4, rightX + 40, startTwoColY + 4);
+
+  const summary = results.monthly.summary;
+  const firstMonth = results.monthly.schedule[0];
+  const breakdownItems = [
+    ['P&I', formatCurrency(firstMonth.principal + firstMonth.interest)],
+    ['Taxes', formatCurrency(summary.taxes)],
+    ['Ins/HOA', formatCurrency(summary.insurance + summary.hoa)],
+    ['PMI', formatCurrency(summary.pmi)],
+  ].filter(item => item[1] !== '$0.00');
+
+  breakdownItems.push([
+    'TOTAL',
+    formatCurrency(summary.totalMonthlyPayment),
+  ]);
+
+  autoTable(doc, {
+    ...tableBase,
+    margin: { left: rightX },
+    tableWidth: colWidth,
+    startY: startTwoColY + 18,
+    body: breakdownItems,
+    columnStyles: {
+      0: { fontStyle: 'bold', textColor: textGray },
+      1: { halign: 'right', textColor: brandDark },
+    },
+  });
+
+  const rightY = (doc as any).lastAutoTable.finalY;
+
+  y = Math.max(leftY, rightY) + 40;
+
+  // SCENARIO COMPARISON
+  setStatus('Comparing Scenarios...');
+  y = drawTitle('Payment Scenario Comparison', y);
+
+  const sanitize = (v: any) =>
+    v === null || v === undefined ? 'N/A' : v.toString();
+
+  const monthlySummary = results.monthly.summary;
+  const biWeeklySummary = results.biWeekly.summary;
+  const biWeeklyExtraSummary = results.biWeeklyWithExtra.summary;
+
+  const monthlyPayment = monthlySummary.totalMonthlyPayment;
+  const biWeeklyPayment =
+    biWeeklySummary.principalAndInterest / 2 +
+    (monthlySummary.taxes +
+      monthlySummary.insurance +
+      monthlySummary.hoa +
+      monthlySummary.pmi) *
+      12 /
+      26;
+
+  let annualExtraPayment = 0;
+  if (params.extraPayment > 0) {
+    switch (params.extraPaymentFrequency) {
+      case 'weekly':
+        annualExtraPayment = params.extraPayment * 52;
+        break;
+      case 'bi-weekly':
+        annualExtraPayment = params.extraPayment * 26;
+        break;
+      case 'monthly':
+        annualExtraPayment = params.extraPayment * 12;
+        break;
+      case 'annually':
+        annualExtraPayment = params.extraPayment;
+        break;
+    }
+  }
+
+  const extraPerBiWeeklyPeriod = annualExtraPayment / 26;
+  const biWeeklyAcceleratedDisplay =
+    extraPerBiWeeklyPeriod > 0
+      ? `${formatCurrency(biWeeklyPayment)} + ${formatCurrency(
+          extraPerBiWeeklyPeriod
+        )}`
+      : formatCurrency(biWeeklyPayment);
+
+  const oneTimeMsg = (match: boolean) =>
+    params.oneTimePayment && params.oneTimePayment > 0 && match
+      ? ` + 1x ${formatCurrency(params.oneTimePayment)}`
+      : '';
+
+  const comparisonBody = [
+    [
+      'Payment',
+      formatCurrency(monthlyPayment) +
+        oneTimeMsg(
+          params.oneTimePaymentMode === 'monthly' ||
+            params.oneTimePaymentMode === 'all'
+        ),
+      formatCurrency(biWeeklyPayment) +
+        oneTimeMsg(
+          params.oneTimePaymentMode === 'biWeekly' ||
+            params.oneTimePaymentMode === 'all'
+        ),
+      biWeeklyAcceleratedDisplay +
+        oneTimeMsg(
+          params.oneTimePaymentMode === 'biWeeklyWithExtra' ||
+            params.oneTimePaymentMode === 'all'
+        ),
+    ],
+    ['Payoff Date', monthlySummary.payoffDate, biWeeklySummary.payoffDate, biWeeklyExtraSummary.payoffDate],
+    ['Time Saved', '(Baseline)', biWeeklySummary.timeSaved, biWeeklyExtraSummary.timeSaved],
+    ['Total Interest', formatCurrency(monthlySummary.totalInterest), formatCurrency(biWeeklySummary.totalInterest), formatCurrency(biWeeklyExtraSummary.totalInterest)],
+    ['Interest Savings', '(Baseline)', formatCurrency(biWeeklySummary.interestSaved), formatCurrency(biWeeklyExtraSummary.interestSaved)],
+  ].map(x => x.map(sanitize));
+
+  autoTable(doc, {
+    ...tableBase,
+    startY: y,
+    head: [['Metric', 'Monthly', 'Bi-Weekly', 'Bi-Weekly v2.0']],
+    body: comparisonBody,
+    columnStyles: {
+      0: { fontStyle: 'bold', textColor: textGray },
+      1: { halign: 'right' },
+      2: { halign: 'right' },
+      3: { halign: 'right' },
+    },
+    willDrawCell: data => {
+      // Modern savings highlight: bold + dark text
+      if (
+        data.section === 'body' &&
+        data.row.index === 4 &&
+        data.column.index > 0 &&
+        data.cell.raw !== '(Baseline)'
+      ) {
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.textColor = brandDark;
+      }
+    },
+  });
+
+  y = (doc as any).lastAutoTable.finalY + 40;
+
+  // PROJECTED WEALTH SNAPSHOTS
+  setStatus('Analyzing Wealth...');
+  if (y > pageHeight - 280) {
+    doc.addPage();
+    y = margin + 30;
+  }
+
+  y = drawTitle('Projected Wealth Analysis (True Net Gain)', y);
+
+  const timelines = [7, 13, 20];
+
+  for (const year of timelines) {
+    if (y > pageHeight - 220) {
+      doc.addPage();
+      y = margin + 30;
+    }
+
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...brandDark);
+    doc.text(`Timeline: ${year} Years`, margin, y);
+    y += 14;
+
+    const mSnap = getSnapshotAtYear(results.monthly.schedule, year, params.homePrice, params.downPayment, false, appreciationRate);
+    const bSnap = getSnapshotAtYear(results.biWeekly.schedule, year, params.homePrice, params.downPayment, true, appreciationRate);
+    const eSnap = getSnapshotAtYear(results.biWeeklyWithExtra.schedule, year, params.homePrice, params.downPayment, true, appreciationRate);
+
+    const fmt = (n: number) => formatCurrency(Math.round(n));
+
+    const snapshotBody = [
+      ['Est. Home Value', fmt(mSnap.futureValue), fmt(bSnap.futureValue), fmt(eSnap.futureValue)],
+      ['Remaining Balance', fmt(mSnap.remainingBalance), fmt(bSnap.remainingBalance), fmt(eSnap.remainingBalance)],
+      ['Net Proceeds (Closing)', fmt(mSnap.netProceeds), fmt(bSnap.netProceeds), fmt(eSnap.netProceeds)],
+      ['Total Interest Paid', fmt(mSnap.totalInterestToDate), fmt(bSnap.totalInterestToDate), fmt(eSnap.totalInterestToDate)],
+      ['TRUE NET GAIN', fmt(mSnap.trueNetGain), fmt(bSnap.trueNetGain), fmt(eSnap.trueNetGain)],
+    ];
+
+    autoTable(doc, {
+      ...tableBase,
+      startY: y,
+      head: [['Metric', 'Monthly', 'Bi-Weekly', 'Bi-Weekly v2.0']],
+      body: snapshotBody,
+      columnStyles: {
+        0: { fontStyle: 'bold', textColor: textGray, cellWidth: 140 },
+        1: { halign: 'right' },
+        2: { halign: 'right' },
+        3: { halign: 'right' },
+      },
+      willDrawCell: data => {
+        if (data.row.index === 4 && data.section === 'body') {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.textColor = brandDark;
+        }
+      },
+    });
+
+    y = (doc as any).lastAutoTable.finalY + 30;
+  }
+
+  // ANNUAL SUMMARY PAGE
+  const annualSummaryBody = results.monthly.annualSummary.map(row => [
+    sanitize(row.year),
+    formatCurrency(row.principalPaid),
+    formatCurrency(row.totalPrincipalPaid),
+    formatCurrency(row.interestPaid),
+    formatCurrency(row.totalInterestPaid),
+    formatCurrency(row.endingBalance),
+  ]);
+
+  if (annualSummaryBody.length > 0) {
+    doc.addPage();
+    y = margin + 30;
+
+    y = drawTitle('Annual Amortization Summary (Monthly)', y);
+
+    autoTable(doc, {
+      ...tableBase,
+      head: [['Year', 'Principal Paid', 'Total Principal', 'Interest Paid', 'Total Interest', 'Ending Balance']],
+      body: annualSummaryBody,
+      startY: y,
+      columnStyles: {
+        0: { halign: 'center' },
+        1: { halign: 'right' },
+        2: { halign: 'right' },
+        3: { halign: 'right' },
+        4: { halign: 'right' },
+        5: { halign: 'right' },
+      },
+    });
+  }
+
+  addFooter();
+
+  return doc.output('blob');
+};
+
 
   const handlePreviewPdf = async () => {
       if (!results || !params) return;
@@ -998,13 +1117,13 @@ export default function App() {
                 </div>
 
                 <div className="mt-8">
-                    <AmortizationSchedule results={results} params={params} />
+                    <AmortizationSchedule results={results} params={params} appreciationRate={appreciationRate} setAppreciationRate={setAppreciationRate} />
                 </div>
             </div>
           )}
 
           <div className="no-print">
-            <GeminiInsights params={params} results={results} isLoading={isLoading} setIsLoading={setIsLoading} />
+            <GeminiInsights params={params} results={results} isLoading={isLoading} setIsLoading={setIsLoading} appreciationRate={appreciationRate} />
           </div>
         </div>
       </main>
@@ -1013,9 +1132,12 @@ export default function App() {
          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
             <p className="font-bold text-lg">Emerson Pinto | Your Favorite Real Estate Agent</p>
             <p className="text-sm mt-1">emerson.pinto@kw.com | (609) 286-7269</p>
-            <button className="mt-4 bg-brand-secondary text-brand-dark font-bold py-2 px-5 rounded-lg hover:bg-yellow-500 transition duration-300">
+            <a 
+                href="mailto:emerson.pinto@kw.com?subject=Mortgage Consultation Request&body=Hi Emerson,%0D%0A%0D%0AI'd like to schedule a consultation to discuss my real estate goals.%0D%0A%0D%0AThanks!"
+                className="mt-4 inline-block bg-brand-secondary text-brand-dark font-bold py-2 px-5 rounded-lg hover:bg-yellow-500 transition duration-300"
+            >
                 Schedule a Consultation
-            </button>
+            </a>
          </div>
       </footer>
     </div>

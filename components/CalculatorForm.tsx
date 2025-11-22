@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { MortgageParams } from '../types';
 
 interface CalculatorFormProps {
@@ -7,9 +7,51 @@ interface CalculatorFormProps {
   isLoading: boolean;
 }
 
-const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: string; icon?: string; description?: string }> = ({ label, icon, description, ...props }) => (
+interface InfoTooltipProps {
+    text: string;
+    alignment?: 'center' | 'left';
+    placement?: 'top' | 'bottom';
+}
+
+const InfoTooltip: React.FC<InfoTooltipProps> = ({ text, alignment = 'center', placement = 'top' }) => {
+  const isTop = placement === 'top';
+  
+  const xPosition = alignment === 'left' 
+    ? "left-[-0.75rem]" 
+    : "left-1/2 -translate-x-1/2";
+    
+  const arrowX = alignment === 'left'
+    ? "left-[0.6rem]"
+    : "left-1/2 -translate-x-1/2";
+
+  // Vertical positioning
+  const yPosition = isTop 
+    ? "bottom-full mb-2" 
+    : "top-full mt-2";
+    
+  const arrowY = isTop 
+    ? "top-full -mt-px" 
+    : "bottom-full -mb-px rotate-180";
+
+  return (
+    <div className="group relative inline-flex items-center ml-1.5 align-middle z-30">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-gray-400 hover:text-brand-primary cursor-help transition-colors">
+        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+      </svg>
+      <span className={`invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity absolute ${yPosition} w-48 md:w-56 p-3 bg-gray-900 text-white text-xs rounded-md shadow-xl pointer-events-none text-left leading-snug font-normal ${xPosition}`}>
+        {text}
+        <svg className={`absolute ${arrowY} text-gray-900 h-2 w-4 ${arrowX}`} viewBox="0 0 255 255"><polygon className="fill-current" points="0,0 127.5,127.5 255,0" /></svg>
+      </span>
+    </div>
+  );
+};
+
+const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: string; icon?: string; description?: string; tooltip?: string }> = ({ label, icon, description, tooltip, ...props }) => (
   <div className="w-full">
-    <label htmlFor={props.id || props.name} className="block text-sm font-medium text-gray-700">{label}</label>
+    <label htmlFor={props.id || props.name} className="block text-sm font-medium text-gray-700 flex items-center">
+        {label}
+        {tooltip && <InfoTooltip text={tooltip} />}
+    </label>
     <div className="mt-1 relative rounded-md shadow-sm">
       {icon && <div className="pointer-events-none absolute inset-y-0 left-0 pl-3 flex items-center"><span className="text-gray-500 sm:text-sm">{icon}</span></div>}
       <input
@@ -32,6 +74,7 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, isL
   const [propertyTaxes, setPropertyTaxes] = useState('5400');
   const [homeownersInsurance, setHomeownersInsurance] = useState('1500');
   const [hoaDues, setHoaDues] = useState('0');
+  const [pmi, setPmi] = useState('0');
   const [extraPayment, setExtraPayment] = useState('100');
   const [extraPaymentFrequency, setExtraPaymentFrequency] = useState<'weekly' | 'bi-weekly' | 'monthly' | 'annually'>('monthly');
   
@@ -44,6 +87,30 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, isL
       return d.toISOString().slice(0, 7); // YYYY-MM
   });
   const [oneTimePaymentMode, setOneTimePaymentMode] = useState<'monthly' | 'biWeekly' | 'biWeeklyWithExtra' | 'all'>('biWeeklyWithExtra');
+
+  // Auto-calculate PMI when Home Price or Down Payment changes
+  useEffect(() => {
+      const price = parseFloat(homePrice) || 0;
+      const dp = parseFloat(downPayment) || 0;
+      const loanAmount = price - dp;
+      
+      if (price > 0) {
+          const ltv = loanAmount / price;
+          if (ltv > 0.8) {
+              // Estimate PMI at 0.55% annually
+              const estimatedMonthlyPmi = (loanAmount * 0.0055) / 12;
+              // Only update if the value is significantly different or currently 0 to allow user override
+              if (pmi === '0' || Math.abs(parseFloat(pmi) - estimatedMonthlyPmi) > 1) {
+                  setPmi(estimatedMonthlyPmi.toFixed(2));
+              }
+          } else if (ltv <= 0.8 && parseFloat(pmi) > 0) {
+             // Auto-remove PMI if LTV drops below 80%
+              setPmi('0');
+          }
+      }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [homePrice, downPayment]); 
+  // We exclude 'pmi' from dependency array to prevent loops, but check it inside
 
   const handleDownPaymentTypeChange = (type: 'dollar' | 'percent') => {
     setDownPaymentType(type);
@@ -84,6 +151,41 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, isL
     }
   };
 
+  // Setup for date dropdowns
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 31 }, (_, i) => currentYear + i);
+  const months = [
+    { value: '01', label: 'Jan' }, { value: '02', label: 'Feb' }, { value: '03', label: 'Mar' },
+    { value: '04', label: 'Apr' }, { value: '05', label: 'May' }, { value: '06', label: 'Jun' },
+    { value: '07', label: 'Jul' }, { value: '08', label: 'Aug' }, { value: '09', label: 'Sep' },
+    { value: '10', label: 'Oct' }, { value: '11', label: 'Nov' }, { value: '12', label: 'Dec' }
+  ];
+  
+  const [selectedYear, selectedMonth] = oneTimePaymentDate.split('-');
+
+  const handleDateChange = (part: 'year' | 'month', value: string) => {
+      let newDate = '';
+      if (part === 'year') {
+          newDate = `${value}-${selectedMonth}`;
+      } else {
+          newDate = `${selectedYear}-${value}`;
+      }
+      setOneTimePaymentDate(newDate);
+  };
+
+  const calculateAnnualExtra = () => {
+      const amount = parseFloat(extraPayment) || 0;
+      if (amount <= 0) return 0;
+      
+      switch(extraPaymentFrequency) {
+          case 'weekly': return amount * 52;
+          case 'bi-weekly': return amount * 26;
+          case 'monthly': return amount * 12;
+          case 'annually': return amount;
+          default: return 0;
+      }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onCalculate({
@@ -94,6 +196,7 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, isL
       propertyTaxes: parseFloat(propertyTaxes) || 0,
       homeownersInsurance: parseFloat(homeownersInsurance) || 0,
       hoaDues: parseFloat(hoaDues) || 0,
+      pmi: parseFloat(pmi) || 0,
       extraPayment: parseFloat(extraPayment) || 0,
       extraPaymentFrequency: extraPaymentFrequency,
       oneTimePayment: showOneTimePayment ? parseFloat(oneTimePaymentAmount) || 0 : 0,
@@ -138,8 +241,28 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, isL
             <Input label="Loan Term (Years)" type="number" min="1" value={loanTerm} onChange={(e) => setLoanTerm(e.target.value)} required />
             <Input label="Interest Rate" icon="%" type="number" min="0" step="0.01" value={interestRate} onChange={(e) => setInterestRate(e.target.value)} required />
             
-            {/* Property Taxes alone in the cell to balance grid */}
-            <Input label="Property Taxes" icon="$" type="number" min="0" value={propertyTaxes} onChange={(e) => setPropertyTaxes(e.target.value)} description="Annual amount" />
+            {/* Property Taxes and PMI sharing the row */}
+            <div className="grid grid-cols-2 gap-4">
+                <Input 
+                    label="Property Taxes" 
+                    icon="$" 
+                    type="number" 
+                    min="0" 
+                    value={propertyTaxes} 
+                    onChange={(e) => setPropertyTaxes(e.target.value)} 
+                    description="Annual" 
+                />
+                <Input 
+                    label="PMI" 
+                    icon="$" 
+                    type="number" 
+                    min="0" 
+                    value={pmi} 
+                    onChange={(e) => setPmi(e.target.value)} 
+                    description="Monthly"
+                    tooltip="Private Mortgage Insurance (PMI) is typically required if your down payment is less than 20%. We estimate this for you, but you can adjust it. It is automatically removed when equity reaches 20%."
+                />
+            </div>
             
             {/* Split column for Insurance and HOA */}
             <div className="grid grid-cols-2 gap-4">
@@ -165,7 +288,10 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, isL
             
             <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 border-t pt-6 mt-2">
                 <div>
-                    <label htmlFor="extraPayment" className="block text-sm font-medium text-gray-700">Extra Recurring Payment</label>
+                    <label htmlFor="extraPayment" className="block text-sm font-medium text-gray-700 flex items-center">
+                        Extra Recurring Payment
+                        <InfoTooltip text="Any additional amount you pay every period goes directly towards reducing your principal balance, saving you interest and shortening your loan term." />
+                    </label>
                     <div className="mt-1 flex rounded-md shadow-sm">
                         <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 sm:text-sm">$</span>
                         <input type="number" id="extraPayment" min="0" value={extraPayment} onChange={(e) => setExtraPayment(e.target.value)} className="bg-transparent flex-1 block w-full rounded-none p-3 border border-x-0 border-gray-300 focus:ring-brand-primary focus:border-brand-primary transition duration-150 ease-in-out" />
@@ -176,13 +302,23 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, isL
                             <option value="annually">Annually</option>
                         </select>
                     </div>
-                    <p className="mt-1 text-xs text-gray-500">Applied to 'Bi-Weekly v2.0' scenario.</p>
+                    <div className="mt-1 flex justify-between items-start">
+                        <p className="text-xs text-gray-500">Applied to 'Bi-Weekly v2.0' scenario.</p>
+                        {calculateAnnualExtra() > 0 && (
+                            <p className="text-xs font-semibold text-brand-secondary">
+                                ≈ {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(calculateAnnualExtra())} / year
+                            </p>
+                        )}
+                    </div>
                 </div>
 
                 <div>
                     <div className="flex items-center justify-between mb-2">
                          <div className="flex items-center space-x-3">
-                             <label className="block text-sm font-medium text-gray-700">One-Time Prepayment</label>
+                             <label className="block text-sm font-medium text-gray-700 flex items-center">
+                                One-Time Prepayment
+                                <InfoTooltip text="A single lump-sum payment applied to your principal balance on a specific date. Great for calculating the impact of bonuses or tax returns." />
+                             </label>
                              <button 
                                 type="button" 
                                 onClick={() => setShowOneTimePayment(!showOneTimePayment)}
@@ -218,14 +354,35 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, isL
                                 placeholder="Amount"
                             />
                         </div>
-                        <div className="relative rounded-md shadow-sm col-span-1">
-                            <input 
-                                type="month" 
-                                disabled={!showOneTimePayment}
-                                value={oneTimePaymentDate} 
-                                onChange={(e) => setOneTimePaymentDate(e.target.value)}
-                                className="bg-transparent w-full p-3 rounded-md border-gray-300 focus:ring-brand-primary focus:border-brand-primary disabled:cursor-not-allowed disabled:bg-gray-50"
-                            />
+                        
+                        {/* User Friendly Date Selection */}
+                        <div className="col-span-1 flex space-x-2">
+                            <div className="relative w-1/2">
+                                <select
+                                    disabled={!showOneTimePayment}
+                                    value={selectedMonth}
+                                    onChange={(e) => handleDateChange('month', e.target.value)}
+                                    className="bg-transparent w-full p-3 rounded-md border-gray-300 focus:ring-brand-primary focus:border-brand-primary disabled:cursor-not-allowed disabled:bg-gray-50 text-sm appearance-none"
+                                >
+                                    {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                                </div>
+                            </div>
+                            <div className="relative w-1/2">
+                                <select
+                                    disabled={!showOneTimePayment}
+                                    value={selectedYear}
+                                    onChange={(e) => handleDateChange('year', e.target.value)}
+                                    className="bg-transparent w-full p-3 rounded-md border-gray-300 focus:ring-brand-primary focus:border-brand-primary disabled:cursor-not-allowed disabled:bg-gray-50 text-sm appearance-none"
+                                >
+                                    {years.map(y => <option key={y} value={y}>{y}</option>)}
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                                </div>
+                            </div>
                         </div>
                         <p className="col-span-2 text-xs text-gray-500">Lump sum payment applied on specified date.</p>
                     </div>

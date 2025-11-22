@@ -8,6 +8,7 @@ interface GeminiInsightsProps {
   results: CalculationResults | null;
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
+  appreciationRate: number;
 }
 
 interface Insight {
@@ -68,22 +69,22 @@ const InsightCard: React.FC<{ insight: Insight }> = ({ insight }) => (
     </div>
 );
 
-const FinancialBreakdown: React.FC<{ params: MortgageParams, results: CalculationResults }> = ({ params, results }) => {
+const FinancialBreakdown: React.FC<{ params: MortgageParams, results: CalculationResults, appreciationRate: number }> = ({ params, results, appreciationRate }) => {
     const [activeYear, setActiveYear] = useState(7);
     const timelines = [7, 13, 20];
 
     const metrics = useMemo(() => {
         return {
-            monthly: getSnapshotAtYear(results.monthly.schedule, activeYear, params.homePrice, params.downPayment),
-            biWeekly: getSnapshotAtYear(results.biWeekly.schedule, activeYear, params.homePrice, params.downPayment),
-            biWeeklyExtra: getSnapshotAtYear(results.biWeeklyWithExtra.schedule, activeYear, params.homePrice, params.downPayment)
+            monthly: getSnapshotAtYear(results.monthly.schedule, activeYear, params.homePrice, params.downPayment, false, appreciationRate),
+            biWeekly: getSnapshotAtYear(results.biWeekly.schedule, activeYear, params.homePrice, params.downPayment, true, appreciationRate),
+            biWeeklyExtra: getSnapshotAtYear(results.biWeeklyWithExtra.schedule, activeYear, params.homePrice, params.downPayment, true, appreciationRate)
         };
-    }, [params, results, activeYear]);
+    }, [params, results, activeYear, appreciationRate]);
 
     const formatMoney = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 
     const rows = [
-        { label: `Est. Home Value (${activeYear}yrs @ 3.5%)`, key: 'futureValue', isCurrency: true },
+        { label: `Est. Home Value (${activeYear}yrs @ ${appreciationRate}%)`, key: 'futureValue', isCurrency: true },
         { label: '(-) Remaining Balance', key: 'remainingBalance', isCurrency: true, textRed: true },
         { label: '(=) Gross Equity', key: 'equity', isCalculated: true, 
           getValue: (m: any) => m.futureValue - m.remainingBalance, isCurrency: true, bold: true },
@@ -147,12 +148,12 @@ const FinancialBreakdown: React.FC<{ params: MortgageParams, results: Calculatio
                     </tbody>
                 </table>
             </div>
-            <p className="text-xs text-gray-400 mt-2 italic">*Calculations assume 3.5% annual appreciation and 8% total closing costs (realtor fees + transfer tax).</p>
+            <p className="text-xs text-gray-400 mt-2 italic">*Calculations assume {appreciationRate}% annual appreciation and 8% total closing costs (realtor fees + transfer tax).</p>
         </div>
     );
 };
 
-export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results, isLoading, setIsLoading }) => {
+export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results, isLoading, setIsLoading, appreciationRate }) => {
   const [insights, setInsights] = useState<Insight[]>([]);
 
   useEffect(() => {
@@ -160,7 +161,7 @@ export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results,
       const fetchInsights = async () => {
         setIsLoading(true);
         try {
-          const insightsString = await getMortgageInsights(params, results);
+          const insightsString = await getMortgageInsights(params, results, appreciationRate);
           setInsights(JSON.parse(insightsString));
         } catch (error) {
           console.error("Failed to parse Gemini insights:", error);
@@ -177,7 +178,7 @@ export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results,
       fetchInsights();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params, results]); // Re-run when params or results change
+  }, [params, results, appreciationRate]); // Re-run when rate changes
 
   if (!params || !results) return null;
 
@@ -202,7 +203,7 @@ export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results,
                 {insights.map((insight, index) => <InsightCard key={index} insight={insight} />)}
             </div>
             
-            <FinancialBreakdown params={params} results={results} />
+            <FinancialBreakdown params={params} results={results} appreciationRate={appreciationRate} />
         </>
       )}
     </div>

@@ -14,26 +14,63 @@ export interface SnapshotMetrics {
 }
 
 // Helper to get data at a specific year
-export function getSnapshotAtYear(schedule: AmortizationEntry[], year: number, initialHomePrice: number, downPayment: number): SnapshotMetrics {
-    const targetMonth = year * 12;
-    // Find the entry closest to the target month
-    let entry = schedule.find(e => e.month >= targetMonth);
-    // If paid off early, get the last entry
+export function getSnapshotAtYear(
+    schedule: AmortizationEntry[], 
+    year: number, 
+    initialHomePrice: number, 
+    downPayment: number,
+    isBiWeekly: boolean,
+    appreciationRate: number = 3.5
+): SnapshotMetrics {
+    const rateDecimal = appreciationRate / 100;
+    const growthFactor = Math.pow(1 + rateDecimal, year);
+
+    // Safety check for empty schedules (e.g. 100% down payment)
+    if (!schedule || schedule.length === 0) {
+        const futureVal = initialHomePrice * growthFactor;
+        return {
+            year,
+            futureValue: futureVal,
+            remainingBalance: 0,
+            totalInterestToDate: 0,
+            closingCosts: futureVal * 0.08,
+            netProceeds: futureVal * 0.92,
+            trueGain: (futureVal * 0.92) - downPayment,
+            trueNetGain: (futureVal * 0.92) - downPayment
+        };
+    }
+
+    // Critical Fix: Calculate periods based on frequency
+    const periodsPerYear = isBiWeekly ? 26 : 12;
+    const targetPeriod = year * periodsPerYear;
+    
+    // Find the entry closest to the target period
+    let entry = schedule.find(e => e.month >= targetPeriod);
+    
+    // If paid off early (entry is undefined), use the very last entry of the schedule
     if (!entry) entry = schedule[schedule.length - 1];
 
-    // Appreciation Calc (Standard 3.5%)
-    const futureValue = initialHomePrice * Math.pow(1.035, year);
+    // Appreciation Calc
+    const futureValue = initialHomePrice * growthFactor;
     const closingCosts = futureValue * 0.08; // 8% fees
-    const remainingBalance = entry.remainingBalance;
+    
+    // If the loan was paid off before this year, balance is 0.
+    // We check if the last entry in the schedule happened BEFORE our target year.
+    const lastEntry = schedule[schedule.length - 1];
+    const paidOffEarly = lastEntry.month < targetPeriod;
+    const remainingBalance = paidOffEarly ? 0 : entry.remainingBalance;
     
     // Net Proceeds: What hits the bank account at closing
     // (Sale Price - Closing Costs - Mortgage Payoff)
     const netProceeds = (futureValue - closingCosts) - remainingBalance;
     
     // Calculate total interest paid up to this point
+    // If paid off early, we sum ALL interest. If not, we sum up to the target entry.
     let totalInterestToDate = 0;
+    const limitPeriod = paidOffEarly ? lastEntry.month : entry.month;
+    
     for(const e of schedule) {
-        if (e.month <= entry.month) {
+        if (e.month <= limitPeriod) {
             totalInterestToDate += e.interest;
         } else {
             break;
@@ -59,7 +96,7 @@ export function getSnapshotAtYear(schedule: AmortizationEntry[], year: number, i
     };
 }
 
-export async function getMortgageInsights(params: MortgageParams, results: CalculationResults): Promise<string> {
+export async function getMortgageInsights(params: MortgageParams, results: CalculationResults, appreciationRate: number): Promise<string> {
   if (!process.env.API_KEY) {
     console.error("API_KEY environment variable not set.");
     return JSON.stringify([
@@ -75,9 +112,9 @@ export async function getMortgageInsights(params: MortgageParams, results: Calcu
   const snapshots = timelines.map(year => {
       return {
           year,
-          monthly: getSnapshotAtYear(results.monthly.schedule, year, params.homePrice, params.downPayment),
-          biWeekly: getSnapshotAtYear(results.biWeekly.schedule, year, params.homePrice, params.downPayment),
-          biWeeklyExtra: getSnapshotAtYear(results.biWeeklyWithExtra.schedule, year, params.homePrice, params.downPayment)
+          monthly: getSnapshotAtYear(results.monthly.schedule, year, params.homePrice, params.downPayment, false, appreciationRate),
+          biWeekly: getSnapshotAtYear(results.biWeekly.schedule, year, params.homePrice, params.downPayment, true, appreciationRate),
+          biWeeklyExtra: getSnapshotAtYear(results.biWeeklyWithExtra.schedule, year, params.homePrice, params.downPayment, true, appreciationRate)
       };
   });
 
@@ -99,8 +136,9 @@ export async function getMortgageInsights(params: MortgageParams, results: Calcu
     - Original Price: $${params.homePrice.toLocaleString()}
     - Down Payment: $${params.downPayment.toLocaleString()}
     - Rate: ${params.interestRate}%
+    - Assumed Appreciation Rate: ${appreciationRate}%
     
-    **Financial Analysis at Median Selling Timelines (assuming 3.5% appreciation & 8% Closing Costs):**
+    **Financial Analysis at Median Selling Timelines (assuming ${appreciationRate}% appreciation & 8% Closing Costs):**
     
     ${snapshots.map(s => `
     --- TIMELINE: ${s.year} YEARS ---

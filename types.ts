@@ -7,6 +7,7 @@ export interface MortgageParams {
   propertyTaxes: number; // annual
   homeownersInsurance: number; // annual
   hoaDues: number; // monthly
+  pmi: number; // monthly
   extraPayment: number;
   extraPaymentFrequency: 'weekly' | 'bi-weekly' | 'monthly' | 'annually';
   oneTimePayment?: number;

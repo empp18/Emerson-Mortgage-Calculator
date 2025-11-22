@@ -1,7 +1,6 @@
 
 import type { MortgageParams, AmortizationEntry, MortgageSummary, CalculationResults, AnnualSummaryEntry } from '../types';
 
-const PMI_RATE = 0.0055; // Annual PMI rate as a percentage of loan amount
 const PMI_LTV_CUTOFF = 0.8; // LTV ratio at which PMI is removed
 
 function calculatePAndI(principal: number, annualRate: number, years: number): number {
@@ -21,6 +20,7 @@ function generateAmortizationSchedule(
     isBiWeekly: boolean,
     extraPaymentPerPeriod: number,
     homePrice: number,
+    monthlyPmiAmount: number,
     oneTimePayment: number = 0,
     oneTimePaymentDate: string = ''
 ): { schedule: AmortizationEntry[], summary: Partial<MortgageSummary> } {
@@ -50,7 +50,8 @@ function generateAmortizationSchedule(
   let totalPmiPaid = 0;
   let period = 0;
   const ltv = principal / homePrice;
-  const needsPmi = ltv > PMI_LTV_CUTOFF;
+  // Initial check: does the loan require PMI based on starting params?
+  const initialNeedsPmi = ltv > PMI_LTV_CUTOFF;
   let oneTimePaymentApplied = false;
   
   while (balance > 0) {
@@ -68,8 +69,11 @@ function generateAmortizationSchedule(
     const interest = balance * ratePerPeriod;
 
     let pmiPayment = 0;
-    if (needsPmi && balance / principal > PMI_LTV_CUTOFF) {
-        pmiPayment = (principal * PMI_RATE) / periodsPerYear;
+    // Check if PMI is still required based on current LTV
+    // We use the user-provided monthlyPmiAmount as the base
+    if (initialNeedsPmi && monthlyPmiAmount > 0 && (balance / homePrice) > PMI_LTV_CUTOFF) {
+        // Convert monthly PMI to period PMI if bi-weekly
+        pmiPayment = isBiWeekly ? (monthlyPmiAmount * 12) / 26 : monthlyPmiAmount;
         totalPmiPaid += pmiPayment;
     }
     
@@ -208,14 +212,15 @@ function formatTimeSaved(totalMonthsSaved: number): string {
 }
 
 export function calculateAllScenarios(params: MortgageParams): CalculationResults {
-    const { homePrice, downPayment, loanTerm, interestRate, propertyTaxes, homeownersInsurance, hoaDues, extraPayment, extraPaymentFrequency, oneTimePayment, oneTimePaymentDate, oneTimePaymentMode } = params;
+    const { homePrice, downPayment, loanTerm, interestRate, propertyTaxes, homeownersInsurance, hoaDues, pmi, extraPayment, extraPaymentFrequency, oneTimePayment, oneTimePaymentDate, oneTimePaymentMode } = params;
     const principal = homePrice - downPayment;
     
     // Common payment components
     const monthlyTaxes = propertyTaxes / 12;
     const monthlyInsurance = homeownersInsurance / 12;
-    const needsPmi = (principal / homePrice) > PMI_LTV_CUTOFF;
-    const initialPmi = needsPmi ? (principal * PMI_RATE) / 12 : 0;
+    // const needsPmi = (principal / homePrice) > PMI_LTV_CUTOFF;
+    // For display purposes in summary, we use the user provided PMI amount (if active at start)
+    const initialPmi = (principal / homePrice) > PMI_LTV_CUTOFF ? pmi : 0;
 
     // Resolve One-Time Payment application
     const applyToMonthly = oneTimePaymentMode === 'monthly' || oneTimePaymentMode === 'all';
@@ -225,6 +230,7 @@ export function calculateAllScenarios(params: MortgageParams): CalculationResult
     // Scenario 1: Monthly
     const monthlyResult = generateAmortizationSchedule(
         principal, interestRate, loanTerm, false, 0, homePrice, 
+        pmi, // Pass the monthly PMI amount
         applyToMonthly ? oneTimePayment : 0, 
         applyToMonthly ? oneTimePaymentDate : ''
     );
@@ -243,6 +249,7 @@ export function calculateAllScenarios(params: MortgageParams): CalculationResult
     // Scenario 2: Bi-Weekly
     const biWeeklyResult = generateAmortizationSchedule(
         principal, interestRate, loanTerm, true, 0, homePrice,
+        pmi, // Pass the monthly PMI amount
         applyToBiWeekly ? oneTimePayment : 0, 
         applyToBiWeekly ? oneTimePaymentDate : ''
     );
@@ -272,6 +279,7 @@ export function calculateAllScenarios(params: MortgageParams): CalculationResult
     const extraPaymentPerBiWeeklyPeriod = annualExtraPayment / 26;
     const biWeeklyExtraResult = generateAmortizationSchedule(
         principal, interestRate, loanTerm, true, extraPaymentPerBiWeeklyPeriod, homePrice, 
+        pmi, // Pass the monthly PMI amount
         applyToBiWeeklyExtra ? oneTimePayment : 0, 
         applyToBiWeeklyExtra ? oneTimePaymentDate : ''
     );
