@@ -1,50 +1,11 @@
-
 import React, { useState, useEffect } from 'react';
+import { InfoTooltip } from './ui/InfoTooltip';
 import type { MortgageParams } from '../types';
 
 interface CalculatorFormProps {
   onCalculate: (params: MortgageParams) => void;
   isLoading: boolean;
 }
-
-interface InfoTooltipProps {
-    text: string;
-    alignment?: 'center' | 'left';
-    placement?: 'top' | 'bottom';
-}
-
-const InfoTooltip: React.FC<InfoTooltipProps> = ({ text, alignment = 'center', placement = 'top' }) => {
-  const isTop = placement === 'top';
-  
-  const xPosition = alignment === 'left' 
-    ? "left-[-0.75rem]" 
-    : "left-1/2 -translate-x-1/2";
-    
-  const arrowX = alignment === 'left'
-    ? "left-[0.6rem]"
-    : "left-1/2 -translate-x-1/2";
-
-  // Vertical positioning
-  const yPosition = isTop 
-    ? "bottom-full mb-2" 
-    : "top-full mt-2";
-    
-  const arrowY = isTop 
-    ? "top-full -mt-px" 
-    : "bottom-full -mb-px rotate-180";
-
-  return (
-    <div className="group relative inline-flex items-center ml-1.5 align-middle z-30">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-gray-400 hover:text-brand-primary cursor-help transition-colors">
-        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-      </svg>
-      <span className={`invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity absolute ${yPosition} w-48 md:w-56 p-3 bg-gray-900 text-white text-xs rounded-md shadow-xl pointer-events-none text-left leading-snug font-normal ${xPosition}`}>
-        {text}
-        <svg className={`absolute ${arrowY} text-gray-900 h-2 w-4 ${arrowX}`} viewBox="0 0 255 255"><polygon className="fill-current" points="0,0 127.5,127.5 255,0" /></svg>
-      </span>
-    </div>
-  );
-};
 
 const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: string; icon?: string; description?: string; tooltip?: string }> = ({ label, icon, description, tooltip, ...props }) => (
   <div className="w-full">
@@ -81,9 +42,12 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, isL
   // One-time Payment State
   const [showOneTimePayment, setShowOneTimePayment] = useState(false);
   const [oneTimePaymentAmount, setOneTimePaymentAmount] = useState('5000');
+  
+  // Fix: safely initialize date to next month without overflow (e.g. Jan 31 -> Mar 3)
   const [oneTimePaymentDate, setOneTimePaymentDate] = useState(() => {
       const d = new Date();
-      d.setMonth(d.getMonth() + 1); // Default to next month
+      d.setDate(1); // Reset to 1st of month to prevent overflow
+      d.setMonth(d.getMonth() + 1); 
       return d.toISOString().slice(0, 7); // YYYY-MM
   });
   const [oneTimePaymentMode, setOneTimePaymentMode] = useState<'monthly' | 'biWeekly' | 'biWeeklyWithExtra' | 'all'>('biWeeklyWithExtra');
@@ -221,7 +185,7 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, isL
                         <input
                             type="number"
                             id="downPaymentInput"
-                            className="bg-transparent focus:ring-brand-primary focus:border-brand-primary block w-full rounded-none rounded-l-md pl-7 p-3 border border-gray-300"
+                            className="bg-transparent focus:ring-brand-primary focus:border-brand-primary block w-full rounded-none rounded-l-md pl-7 p-3"
                             value={downPaymentType === 'dollar' ? downPayment : downPaymentPercent}
                             onChange={(e) => handleDownPaymentChange(e.target.value)}
                             min="0"
@@ -229,10 +193,10 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, isL
                             required
                         />
                     </div>
-                    <button type="button" onClick={() => handleDownPaymentTypeChange('dollar')} className={`relative -ml-px inline-flex items-center space-x-2 px-4 py-2 border border-gray-300 text-sm font-medium ${downPaymentType === 'dollar' ? 'bg-brand-primary text-white border-brand-primary' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'}`}>
+                    <button type="button" onClick={() => handleDownPaymentTypeChange('dollar')} className={`relative -ml-px inline-flex items-center space-x-2 px-4 py-2 text-sm font-medium ${downPaymentType === 'dollar' ? 'bg-brand-primary text-white border-brand-primary' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'}`}>
                         $
                     </button>
-                    <button type="button" onClick={() => handleDownPaymentTypeChange('percent')} className={`relative -ml-px inline-flex items-center space-x-2 px-4 py-2 border border-gray-300 text-sm font-medium rounded-r-md ${downPaymentType === 'percent' ? 'bg-brand-primary text-white border-brand-primary' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'}`}>
+                    <button type="button" onClick={() => handleDownPaymentTypeChange('percent')} className={`relative -ml-px inline-flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-r-md ${downPaymentType === 'percent' ? 'bg-brand-primary text-white border-brand-primary' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'}`}>
                         %
                     </button>
                 </div>
@@ -293,9 +257,9 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, isL
                         <InfoTooltip text="Any additional amount you pay every period goes directly towards reducing your principal balance, saving you interest and shortening your loan term." />
                     </label>
                     <div className="mt-1 flex rounded-md shadow-sm">
-                        <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 sm:text-sm">$</span>
-                        <input type="number" id="extraPayment" min="0" value={extraPayment} onChange={(e) => setExtraPayment(e.target.value)} className="bg-transparent flex-1 block w-full rounded-none p-3 border border-x-0 border-gray-300 focus:ring-brand-primary focus:border-brand-primary transition duration-150 ease-in-out" />
-                        <select value={extraPaymentFrequency} onChange={(e) => setExtraPaymentFrequency(e.target.value as any)} className="bg-transparent inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 text-gray-700 sm:text-sm focus:ring-brand-primary focus:border-brand-primary">
+                        <span className="inline-flex items-center px-3 rounded-l-md bg-gray-50 text-gray-500 sm:text-sm">$</span>
+                        <input type="number" id="extraPayment" min="0" value={extraPayment} onChange={(e) => setExtraPayment(e.target.value)} className="bg-transparent flex-1 block w-full rounded-none p-3 focus:ring-brand-primary focus:border-brand-primary transition duration-150 ease-in-out" />
+                        <select value={extraPaymentFrequency} onChange={(e) => setExtraPaymentFrequency(e.target.value as any)} className="bg-transparent inline-flex items-center rounded-r-md text-gray-700 sm:text-sm focus:ring-brand-primary focus:border-brand-primary">
                             <option value="weekly">Weekly</option>
                             <option value="bi-weekly">Bi-Weekly</option>
                             <option value="monthly">Monthly</option>

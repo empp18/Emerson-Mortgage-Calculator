@@ -1,4 +1,3 @@
-
 import type { MortgageParams, AmortizationEntry, MortgageSummary, CalculationResults, AnnualSummaryEntry } from '../types';
 
 const PMI_LTV_CUTOFF = 0.8; // LTV ratio at which PMI is removed
@@ -77,7 +76,7 @@ function generateAmortizationSchedule(
         totalPmiPaid += pmiPayment;
     }
     
-    const principalPayment = paymentPerPeriod - interest;
+    let principalPayment = paymentPerPeriod - interest;
     
     // Logic for regular extra payment
     let currentExtraPayment = extraPaymentPerPeriod;
@@ -92,44 +91,35 @@ function generateAmortizationSchedule(
         }
     }
 
-    const appliedExtraPayment = Math.min(balance - principalPayment, currentExtraPayment);
+    // Clean logic to cap payments at remaining balance
+    let appliedExtraPayment = currentExtraPayment;
+    
+    if (principalPayment > balance) {
+        principalPayment = balance;
+        appliedExtraPayment = 0;
+    } else if (principalPayment + appliedExtraPayment > balance) {
+        appliedExtraPayment = balance - principalPayment;
+    }
+
     const totalPrincipalPaid = principalPayment + appliedExtraPayment;
     
     balance -= totalPrincipalPaid;
 
-    let entry: AmortizationEntry;
+    // Handle floating point drift near zero
+    if (balance < 0.01) balance = 0;
 
-    if (balance < 0) {
-        // Adjust last payment
-        const finalPrincipal = totalPrincipalPaid + balance;
-        const finalTotalPayment = interest + finalPrincipal + pmiPayment;
-        entry = {
-            month: period,
-            paymentDate: '',
-            beginningBalance,
-            interest: interest,
-            principal: finalPrincipal,
-            extraPayment: appliedExtraPayment,
-            totalPayment: finalTotalPayment,
-            remainingBalance: 0,
-        };
-        totalInterest += interest;
-        balance = 0;
-    } else {
-        entry = {
-            month: period,
-            paymentDate: '',
-            beginningBalance,
-            interest,
-            principal: principalPayment,
-            extraPayment: appliedExtraPayment,
-            totalPayment: paymentPerPeriod + appliedExtraPayment + pmiPayment,
-            remainingBalance: balance,
-        };
-        totalInterest += interest;
-    }
+    const entry: AmortizationEntry = {
+        month: period,
+        paymentDate: currentDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+        beginningBalance,
+        interest,
+        principal: principalPayment,
+        extraPayment: appliedExtraPayment,
+        totalPayment: principalPayment + appliedExtraPayment + interest + pmiPayment,
+        remainingBalance: balance,
+    };
     
-    entry.paymentDate = currentDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    totalInterest += interest;
     schedule.push(entry);
 
     if (period > loanTermYears * periodsPerYear * 2) { // Safety break
