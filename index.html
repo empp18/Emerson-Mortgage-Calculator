@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mortgage Amortization Planner</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -14,6 +17,11 @@
               'brand-secondary': '#F2A900',
               'brand-light': '#F0F7FF',
               'brand-dark': '#002D4E',
+              'brand-paper': '#FBFAF7',
+            },
+            fontFamily: {
+              sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+              serif: ['Fraunces', 'Georgia', 'serif'],
             },
           },
         },
@@ -33,7 +41,7 @@
 }
 </script>
 </head>
-  <body class="bg-brand-light">
+  <body class="bg-brand-paper">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

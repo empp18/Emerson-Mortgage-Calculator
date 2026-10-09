@@ -7,6 +7,7 @@ import { GeminiInsights } from './components/GeminiInsights';
 import { InfoTooltip } from './components/ui/InfoTooltip';
 import { calculateAllScenarios, annualExtraPaymentFor } from './services/mortgageCalculator';
 import { getScenarioSnapshots } from './services/geminiService';
+import { ResultHeadline } from './components/ResultHeadline';
 import type { MortgageParams, CalculationResults, AmortizationEntry } from './types';
 
 const formatCurrency = (value: number | null | undefined): string => {
@@ -1011,7 +1012,10 @@ export default function App() {
         isGenerating={isGeneratingPdf}
         generationStatus={pdfGenerationStatus}
     />
-    <div className="bg-brand-light min-h-screen text-gray-800">
+    <div className="bg-brand-paper min-h-screen text-gray-800">
+      <div className="bg-brand-dark text-white text-sm px-4 py-2 text-center border-b border-white/10">
+        Presented by <span className="font-bold text-brand-secondary">Emerson Pinto</span>
+      </div>
       <header className="bg-brand-dark shadow-md">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <div className="flex items-center">
@@ -1041,6 +1045,8 @@ export default function App() {
           
           {results && params && (
             <div id="results-container" className="mt-8">
+                <ResultHeadline params={params} results={results} appreciationRate={appreciationRate} includeCarryingCosts={includeCarryingCosts} />
+
                 {/* Monthly Payment Breakdown */}
                 <div className="mb-8">
                     <PaymentBreakdown results={results} />
