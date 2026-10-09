@@ -41,11 +41,8 @@ const RESPONSE_SCHEMA = {
     required: ['timeline', 'bottomLine', 'fullAnalysis'],
 };
 
-// Google retires model names; set GEMINI_MODEL in Vercel to switch without a code change
-const DEFAULT_MODEL = 'gemini-3.8-flash';
-
 // Tried in order: the second is used only if the first call fails (e.g. Google retires or limits a model)
-const MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash'];
+const MODELS = ['gemini-3.6-flash', 'gemini-3.8-flash'];
 
 const FREQUENCIES = ['weekly', 'bi-weekly', 'monthly', 'annually'] as const;
 const MODES = ['monthly', 'biWeekly', 'biWeeklyWithExtra', 'all'] as const;
@@ -93,7 +90,7 @@ const describe = (error: unknown): string => {
 
 // Health check: open /api/insights in a browser to see whether the function loads and sees the key
 export function GET(): Response {
-    return Response.json({ ok: true, keyConfigured: Boolean(process.env.GEMINI_API_KEY), model: process.env.GEMINI_MODEL || DEFAULT_MODEL, node: process.version });
+    return Response.json({ ok: true, keyConfigured: Boolean(process.env.GEMINI_API_KEY), models: MODELS, node: process.version });
 }
 
 export async function POST(request: Request): Promise<Response> {
