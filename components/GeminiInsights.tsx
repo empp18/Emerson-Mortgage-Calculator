@@ -2,6 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   PLAN_KEYS,
+  dotColor,
   formatSignedThousands,
   getMortgageInsights,
   getTimelineSnapshots,
@@ -18,30 +19,27 @@ interface GeminiInsightsProps {
   appreciationRate: number;
   closingCostRate: number;
   includeCarryingCosts: boolean;
+  // Held by App so the PDF report can use the same written analysis
+  analysis: Analysis | null;
+  onAnalysisChange: (analysis: Analysis) => void;
 }
 
-interface Analysis {
+export interface Analysis {
   insights: MortgageInsights;
   // What the analysis was written from, so a stale one can be flagged
   inputs: string;
   generatedOn: string;
 }
 
+// Identifies the numbers an analysis was written from
+export const analysisInputsKey = (params: MortgageParams, appreciationRate: number, closingCostRate: number, includeCarryingCosts: boolean) =>
+  JSON.stringify([params, appreciationRate, closingCostRate, includeCarryingCosts]);
+
 const GREEN = '#1E7B4F';
-const RED = '#B42318';
 const GOLD = '#A67700';
 
 const BAR_LABELS: Record<PlanKey, string> = { monthly: 'Monthly', biWeekly: 'Bi-Weekly', biWeeklyExtra: 'v2.0' };
 const BAR_COLORS: Record<PlanKey, string> = { monthly: '#005A9C', biWeekly: GREEN, biWeeklyExtra: GOLD };
-
-// Red when every plan loses and they lose about the same; green when every plan gains; gold otherwise
-const dotColor = (gains: number[]) => {
-  const lowest = Math.min(...gains);
-  const highest = Math.max(...gains);
-  if (gains.every(g => g > 0)) return GREEN;
-  if (gains.every(g => g < 0) && highest - lowest < 0.25 * -lowest) return RED;
-  return GOLD;
-};
 
 const Card: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <section className="rounded-[18px] border border-brand-line bg-white px-[18px] py-[18px] md:px-[22px] md:py-[20px]">{children}</section>
@@ -67,9 +65,7 @@ const Bar: React.FC<{ plan: PlanKey; value: number; scale: number }> = ({ plan, 
   );
 };
 
-export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results, isLoading, setIsLoading, appreciationRate, closingCostRate, includeCarryingCosts }) => {
-  const [analysis, setAnalysis] = useState<Analysis | null>(null);
-
+export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results, isLoading, setIsLoading, appreciationRate, closingCostRate, includeCarryingCosts, analysis, onAnalysisChange }) => {
   // Live numbers for the bars; the written analysis is only regenerated on request
   const timeline = useMemo(
     () => (params && results ? getTimelineSnapshots(results, params, appreciationRate, includeCarryingCosts, closingCostRate) : null),
@@ -78,7 +74,7 @@ export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results,
 
   if (!params || !results || !timeline) return null;
 
-  const currentInputs = JSON.stringify([params, appreciationRate, closingCostRate, includeCarryingCosts]);
+  const currentInputs = analysisInputsKey(params, appreciationRate, closingCostRate, includeCarryingCosts);
   const isStale = analysis !== null && analysis.inputs !== currentInputs;
 
   // Bars share one scale: the largest absolute value across all nine numbers fills half the track
@@ -88,7 +84,7 @@ export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results,
     setIsLoading(true);
     try {
       const insights = await getMortgageInsights(params, results, appreciationRate, includeCarryingCosts, closingCostRate);
-      setAnalysis({ insights, inputs: currentInputs, generatedOn: currentMonthYear() });
+      onAnalysisChange({ insights, inputs: currentInputs, generatedOn: currentMonthYear() });
     } catch (error) {
       console.error('Failed to generate insights:', error);
     } finally {

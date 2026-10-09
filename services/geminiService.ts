@@ -178,6 +178,30 @@ export const formatSignedThousands = (value: number): string => {
     return `${value < 0 ? '−' : '+'}$${thousands}k`;
 };
 
+// Dot colour for one sale point: red when every plan loses and they lose about the same,
+// green when every plan gains, gold otherwise.
+export const dotColor = (gains: number[]): string => {
+    const lowest = Math.min(...gains);
+    const highest = Math.max(...gains);
+    if (gains.every(g => g > 0)) return '#1E7B4F';
+    if (gains.every(g => g < 0) && highest - lowest < 0.25 * -lowest) return '#B42318';
+    return '#A67700';
+};
+
+// The plain-language sale sentence shown under the calculator and at the top of the PDF
+export const describeSale = (sale: SnapshotMetrics, includeCarryingCosts: boolean): string => {
+    const money = (value: number) =>
+        new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Math.abs(value));
+    const closing = sale.netProceeds >= 0
+        ? `you would get ${money(sale.netProceeds)} at closing`
+        : `you would owe ${money(sale.netProceeds)} at closing`;
+    const costs = includeCarryingCosts ? 'interest and ownership costs' : 'interest';
+    const outcome = sale.trueNetGain < 0
+        ? `you would still be ${money(sale.trueNetGain)} behind`
+        : `you would be ${money(sale.trueNetGain)} ahead`;
+    return `If you sold in seven years, ${closing}. After ${costs}, ${outcome}.`;
+};
+
 export function getTimelineSnapshots(
     results: CalculationResults,
     params: MortgageParams,

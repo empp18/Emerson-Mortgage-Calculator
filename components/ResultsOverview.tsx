@@ -1,7 +1,8 @@
 import React from 'react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine } from 'recharts';
 import { getScenarioSnapshots } from '../services/geminiService';
-import type { MortgageParams, CalculationResults, AmortizationEntry } from '../types';
+import { yearEndBalance } from '../services/mortgageCalculator';
+import type { MortgageParams, CalculationResults } from '../types';
 
 // The sale is measured at this year throughout the overview
 const SALE_YEAR = 7;
@@ -136,21 +137,11 @@ interface BalanceChartCardProps {
 export const BalanceChartCard: React.FC<BalanceChartCardProps> = ({ params, results }) => {
   const principal = results.monthly.summary.totalPrincipal ?? 0;
 
-  // Balance at the end of a year. Null once the loan is gone, so the line stops at payoff.
-  const balanceAt = (schedule: AmortizationEntry[], periodsPerYear: number, year: number): number | null => {
-    if (year === 0) return principal;
-    const lastMonth = schedule.length ? schedule[schedule.length - 1].month : 0;
-    const payoffYear = Math.ceil(lastMonth / periodsPerYear);
-    if (year > payoffYear) return null;
-    const row = schedule.find(e => e.month >= year * periodsPerYear);
-    return row ? Math.round(row.remainingBalance) : 0;
-  };
-
   const data = Array.from({ length: params.loanTerm + 1 }, (_, year) => ({
     year,
-    monthly: balanceAt(results.monthly.schedule, 12, year),
-    biWeekly: balanceAt(results.biWeekly.schedule, 26, year),
-    biWeeklyExtra: balanceAt(results.biWeeklyWithExtra.schedule, 26, year),
+    monthly: yearEndBalance(results.monthly.schedule, 12, year, principal),
+    biWeekly: yearEndBalance(results.biWeekly.schedule, 26, year, principal),
+    biWeeklyExtra: yearEndBalance(results.biWeeklyWithExtra.schedule, 26, year, principal),
   }));
   const ticks = Array.from({ length: Math.floor(params.loanTerm / 5) + 1 }, (_, i) => i * 5);
   // Balance axis in round steps up to the loan amount

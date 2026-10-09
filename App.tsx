@@ -1,14 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, LineChart, Line, Legend, XAxis, YAxis, CartesianGrid, AreaChart, Area } from 'recharts';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { CalculatorForm } from './components/CalculatorForm';
-import { GeminiInsights } from './components/GeminiInsights';
+import { GeminiInsights, analysisInputsKey, type Analysis } from './components/GeminiInsights';
 import { FinancialBreakdown } from './components/FinancialBreakdown';
 import { WalkAwayCard, PlanCards, BalanceChartCard } from './components/ResultsOverview';
 import { InfoTooltip } from './components/ui/InfoTooltip';
 import { calculateAllScenarios, annualExtraPaymentFor } from './services/mortgageCalculator';
-import { getScenarioSnapshots } from './services/geminiService';
+import { buildPdfReport } from './services/pdfReport';
 import { ResultHeadline } from './components/ResultHeadline';
 import type { MortgageParams, CalculationResults, AmortizationEntry } from './types';
 
@@ -456,6 +454,7 @@ export default function App() {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [pdfGenerationStatus, setPdfGenerationStatus] = useState('');
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
 
   const handleCalculate = (newParams: MortgageParams) => {
     setParams(newParams);
@@ -464,393 +463,25 @@ export default function App() {
   };
 
   const generatePdfDocument = async (
-  results: CalculationResults,
-  params: MortgageParams,
-  setStatus: (status: string) => void
-): Promise<Blob> => {
-  setStatus('Initializing Report...');
-  await new Promise(resolve => setTimeout(resolve, 50));
+    results: CalculationResults,
+    params: MortgageParams,
+    setStatus: (status: string) => void
+  ): Promise<Blob> => {
+    setStatus('Initializing Report...');
+    await new Promise(resolve => setTimeout(resolve, 50));
 
-  const doc = new jsPDF({ orientation: 'p', unit: 'pt', format: 'a4' });
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 40;
-  let y = margin;
-
-  // Brand Colors
-  const brandDark: [number, number, number] = [0, 45, 78];
-  const brandSecondary: [number, number, number] = [242, 169, 0]; // KEEP YELLOW
-  const textGray: [number, number, number] = [60, 60, 60];
-  const lightGray: [number, number, number] = [200, 200, 200];
-  const ultraLight: [number, number, number] = [248, 250, 252];
-
-  // Modern Title Renderer (yellow underline preserved)
-  const drawTitle = (text: string, yPos: number, xPos: number = margin) => {
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(brandDark[0], brandDark[1], brandDark[2]);
-    doc.text(text, xPos, yPos);
-
-    // KEEP your yellow underline
-    doc.setDrawColor(brandSecondary[0], brandSecondary[1], brandSecondary[2]);
-    doc.setLineWidth(2);
-    doc.line(xPos, yPos + 7, xPos + 40, yPos + 7);
-
-    return yPos + 30;
-  };
-
-  // Minimal modern header
-  const addHeader = () => {
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(140, 140, 140);
-    doc.text(
-      `Generated: ${new Date().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      })}`,
-      margin,
-      margin
-    );
-
-    doc.setFontSize(22);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(brandDark[0], brandDark[1], brandDark[2]);
-    doc.text('Mortgage Strategy Report', margin, margin + 22);
-
-    y = margin + 55;
-  };
-
-  // Modern footer (clean, no border)
-  const addFooter = () => {
-    const pageCount = (doc as any).internal.getNumberOfPages();
-
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-
-      const footerY = pageHeight - 32;
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(140, 140, 140);
-
-      doc.text(
-        'Emerson Pinto | (609) 286-7269 | emerson.pinto@kw.com',
-        margin,
-        footerY
-      );
-
-      doc.text(`Page ${i} of ${pageCount}`, pageWidth - margin, footerY, {
-        align: 'right',
-      });
-
-      if (i === 1) {
-        doc.setFontSize(8);
-        doc.text(
-          `Estimates only. Assumes ${appreciationRate}% appreciation & ${closingCostRate}% closing costs${includeCarryingCosts ? '; includes taxes, insurance, HOA & PMI' : ''}.`,
-          margin,
-          footerY + 12
-        );
-      }
-    }
-  };
-
-  // Modern minimalist table defaults
-  const tableBase = {
-    theme: 'plain' as const,
-    styles: {
-      fontSize: 10,
-      cellPadding: 6,
-      lineWidth: 0,
-      textColor: textGray,
-    },
-    headStyles: {
-      fillColor: brandDark,
-      textColor: [255, 255, 255] as [number, number, number],
-      fontStyle: 'bold' as const,
-      halign: 'left' as const,
-      lineWidth: 0,
-    },
-    alternateRowStyles: {
-      fillColor: ultraLight,
-    },
-    bodyStyles: {
-      lineWidth: 0,
-    },
-  };
-
-  // START CONTENT
-  addHeader();
-
-  // TWO-COLUMN SECTION
-  setStatus('Generating Loan Analysis...');
-
-  const colWidth = (pageWidth - margin * 2 - 30) / 2;
-  const leftX = margin;
-  const rightX = margin + colWidth + 30;
-  const startTwoColY = y;
-
-  // LEFT: Loan Details
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(brandDark[0], brandDark[1], brandDark[2]);
-  doc.text('Loan Details', leftX, startTwoColY);
-
-  doc.setDrawColor(brandSecondary[0], brandSecondary[1], brandSecondary[2]);
-  doc.setLineWidth(2);
-  doc.line(leftX, startTwoColY + 4, leftX + 40, startTwoColY + 4);
-
-  const loanAmount = params.homePrice - params.downPayment;
-  const dpPercent = ((params.downPayment / params.homePrice) * 100).toFixed(1);
-
-  const loanDetailsBody = [
-    ['Home Price', formatCurrency(params.homePrice)],
-    [
-      'Down Payment',
-      `${formatCurrency(params.downPayment)} (${dpPercent}%)`,
-    ],
-    ['Loan Amount', formatCurrency(loanAmount)],
-    ['Rate / Term', `${params.interestRate}% / ${params.loanTerm} Years`],
-    ['Property Taxes', `${formatCurrency(params.propertyTaxes)}/yr`],
-    ['Insurance', `${formatCurrency(params.homeownersInsurance)}/yr`],
-  ];
-
-  autoTable(doc, {
-    ...tableBase,
-    margin: { left: leftX },
-    tableWidth: colWidth,
-    startY: startTwoColY + 18,
-    body: loanDetailsBody,
-    columnStyles: {
-      0: { fontStyle: 'bold', textColor: textGray },
-      1: { halign: 'right', textColor: brandDark },
-    },
-  });
-
-  const leftY = (doc as any).lastAutoTable.finalY;
-
-  // RIGHT: Monthly Breakdown
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(...brandDark);
-  doc.text('Monthly Breakdown', rightX, startTwoColY);
-
-  doc.line(rightX, startTwoColY + 4, rightX + 40, startTwoColY + 4);
-
-  const summary = results.monthly.summary;
-  const firstMonth = results.monthly.schedule[0];
-  const breakdownItems = [
-    ['P&I', formatCurrency(firstMonth.principal + firstMonth.interest)],
-    ['Taxes', formatCurrency(summary.taxes)],
-    ['Ins/HOA', formatCurrency(summary.insurance + summary.hoa)],
-    ['PMI', formatCurrency(summary.pmi)],
-  ].filter(item => item[1] !== '$0.00');
-
-  breakdownItems.push([
-    'TOTAL',
-    formatCurrency(summary.totalMonthlyPayment),
-  ]);
-
-  autoTable(doc, {
-    ...tableBase,
-    margin: { left: rightX },
-    tableWidth: colWidth,
-    startY: startTwoColY + 18,
-    body: breakdownItems,
-    columnStyles: {
-      0: { fontStyle: 'bold', textColor: textGray },
-      1: { halign: 'right', textColor: brandDark },
-    },
-  });
-
-  const rightY = (doc as any).lastAutoTable.finalY;
-
-  y = Math.max(leftY, rightY) + 40;
-
-  // SCENARIO COMPARISON
-  setStatus('Comparing Scenarios...');
-  y = drawTitle('Payment Scenario Comparison', y);
-
-  const sanitize = (v: any) =>
-    v === null || v === undefined ? 'N/A' : v.toString();
-
-  const monthlySummary = results.monthly.summary;
-  const biWeeklySummary = results.biWeekly.summary;
-  const biWeeklyExtraSummary = results.biWeeklyWithExtra.summary;
-
-  const monthlyPayment = monthlySummary.totalMonthlyPayment;
-  const biWeeklyPayment =
-    biWeeklySummary.principalAndInterest / 2 +
-    (monthlySummary.taxes +
-      monthlySummary.insurance +
-      monthlySummary.hoa +
-      monthlySummary.pmi) *
-      12 /
-      26;
-
-  const annualExtraPayment = annualExtraPaymentFor(params);
-  const biWeeklyAcceleratedDisplay =
-    annualExtraPayment <= 0
-      ? formatCurrency(biWeeklyPayment)
-      : params.extraPaymentFrequency === 'annually'
-        ? `${formatCurrency(biWeeklyPayment)} + ${formatCurrency(annualExtraPayment)} / yr`
-        : `${formatCurrency(biWeeklyPayment)} + ${formatCurrency(annualExtraPayment / 26)}`;
-  const oneTimeMsg = (match: boolean) =>
-    params.oneTimePayment && params.oneTimePayment > 0 && match
-      ? ` + 1x ${formatCurrency(params.oneTimePayment)}`
-      : '';
-
-  const comparisonBody = [
-    [
-      'Payment',
-      formatCurrency(monthlyPayment) +
-        oneTimeMsg(
-          params.oneTimePaymentMode === 'monthly' ||
-            params.oneTimePaymentMode === 'all'
-        ),
-      formatCurrency(biWeeklyPayment) +
-        oneTimeMsg(
-          params.oneTimePaymentMode === 'biWeekly' ||
-            params.oneTimePaymentMode === 'all'
-        ),
-      biWeeklyAcceleratedDisplay +
-        oneTimeMsg(
-          params.oneTimePaymentMode === 'biWeeklyWithExtra' ||
-            params.oneTimePaymentMode === 'all'
-        ),
-    ],
-    ['Payoff Date', monthlySummary.payoffDate, biWeeklySummary.payoffDate, biWeeklyExtraSummary.payoffDate],
-    ['Time Saved', monthlySummary.timeSaved, biWeeklySummary.timeSaved, biWeeklyExtraSummary.timeSaved],
-    ['Total Interest', formatCurrency(monthlySummary.totalInterest), formatCurrency(biWeeklySummary.totalInterest), formatCurrency(biWeeklyExtraSummary.totalInterest)],
-    ['Interest Savings', monthlySummary.interestSaved > 0 ? formatCurrency(monthlySummary.interestSaved) : '(Baseline)', formatCurrency(biWeeklySummary.interestSaved), formatCurrency(biWeeklyExtraSummary.interestSaved)],
-  ].map(x => x.map(sanitize));
-
-  autoTable(doc, {
-    ...tableBase,
-    startY: y,
-    head: [['Metric', 'Monthly', 'Bi-Weekly', 'Bi-Weekly v2.0']],
-    body: comparisonBody,
-    columnStyles: {
-      0: { fontStyle: 'bold', textColor: textGray },
-      1: { halign: 'right' },
-      2: { halign: 'right' },
-      3: { halign: 'right' },
-    },
-    willDrawCell: data => {
-      // Modern savings highlight: bold + dark text
-      if (
-        data.section === 'body' &&
-        data.row.index === 4 &&
-        data.column.index > 0 &&
-        data.cell.raw !== '(Baseline)'
-      ) {
-        data.cell.styles.fontStyle = 'bold';
-        data.cell.styles.textColor = brandDark;
-      }
-    },
-  });
-
-  y = (doc as any).lastAutoTable.finalY + 40;
-
-  // PROJECTED WEALTH SNAPSHOTS
-  setStatus('Analyzing Wealth...');
-  if (y > pageHeight - 280) {
-    doc.addPage();
-    y = margin + 30;
-  }
-
-  y = drawTitle('Projected Wealth Analysis (True Net Gain)', y);
-
-  const timelines = [7, 13, 20];
-
-  for (const year of timelines) {
-    if (y > pageHeight - 220) {
-      doc.addPage();
-      y = margin + 30;
-    }
-
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...brandDark);
-    doc.text(`Timeline: ${year} Years`, margin, y);
-    y += 14;
-
-    const { monthly: mSnap, biWeekly: bSnap, biWeeklyExtra: eSnap } = getScenarioSnapshots(results, params, year, appreciationRate, includeCarryingCosts, closingCostRate);
-
-    const fmt = (n: number) => formatCurrency(Math.round(n));
-
-    const snapshotBody = [
-      ['Est. Home Value', fmt(mSnap.futureValue), fmt(bSnap.futureValue), fmt(eSnap.futureValue)],
-      ['Remaining Balance', fmt(mSnap.remainingBalance), fmt(bSnap.remainingBalance), fmt(eSnap.remainingBalance)],
-      ['Net Proceeds (Closing)', fmt(mSnap.netProceeds), fmt(bSnap.netProceeds), fmt(eSnap.netProceeds)],
-      ['Principal Paid', fmt(mSnap.principalPaidToDate), fmt(bSnap.principalPaidToDate), fmt(eSnap.principalPaidToDate)],
-      ['TRUE GAIN', fmt(mSnap.trueGain), fmt(bSnap.trueGain), fmt(eSnap.trueGain)],
-      ['Total Interest Paid', fmt(mSnap.totalInterestToDate), fmt(bSnap.totalInterestToDate), fmt(eSnap.totalInterestToDate)],
-      ...(includeCarryingCosts
-        ? [['Taxes, Ins., HOA & PMI', fmt(mSnap.carryingCostsToDate), fmt(bSnap.carryingCostsToDate), fmt(eSnap.carryingCostsToDate)]]
-        : []),
-      ['TRUE NET GAIN', fmt(mSnap.trueNetGain), fmt(bSnap.trueNetGain), fmt(eSnap.trueNetGain)],
-    ];
-
-    autoTable(doc, {
-      ...tableBase,
-      startY: y,
-      head: [['Metric', 'Monthly', 'Bi-Weekly', 'Bi-Weekly v2.0']],
-      body: snapshotBody,
-      columnStyles: {
-        0: { fontStyle: 'bold', textColor: textGray, cellWidth: 140 },
-        1: { halign: 'right' },
-        2: { halign: 'right' },
-        3: { halign: 'right' },
-      },
-      willDrawCell: data => {
-        if (data.row.index === snapshotBody.length - 1 && data.section === 'body') {
-          data.cell.styles.fontStyle = 'bold';
-          data.cell.styles.textColor = brandDark;
-        }
-      },
+    // The written analysis goes in the report only when it was made from the numbers on screen
+    const analysisIsCurrent = analysis !== null && analysis.inputs === analysisInputsKey(params, appreciationRate, closingCostRate, includeCarryingCosts);
+    const doc = buildPdfReport({
+      params,
+      results,
+      appreciationRate,
+      closingCostRate,
+      includeCarryingCosts,
+      insights: analysisIsCurrent ? analysis.insights : null,
     });
-
-    y = (doc as any).lastAutoTable.finalY + 30;
-  }
-
-  // ANNUAL SUMMARY PAGE
-  const annualSummaryBody = results.monthly.annualSummary.map(row => [
-    sanitize(row.year),
-    formatCurrency(row.principalPaid),
-    formatCurrency(row.totalPrincipalPaid),
-    formatCurrency(row.interestPaid),
-    formatCurrency(row.totalInterestPaid),
-    formatCurrency(row.endingBalance),
-  ]);
-
-  if (annualSummaryBody.length > 0) {
-    doc.addPage();
-    y = margin + 30;
-
-    y = drawTitle('Annual Amortization Summary (Monthly)', y);
-
-    autoTable(doc, {
-      ...tableBase,
-      head: [['Year', 'Principal Paid', 'Total Principal', 'Interest Paid', 'Total Interest', 'Ending Balance']],
-      body: annualSummaryBody,
-      startY: y,
-      columnStyles: {
-        0: { halign: 'center' },
-        1: { halign: 'right' },
-        2: { halign: 'right' },
-        3: { halign: 'right' },
-        4: { halign: 'right' },
-        5: { halign: 'right' },
-      },
-    });
-  }
-
-  addFooter();
-
-  return doc.output('blob');
-};
-
+    return doc.output('blob');
+  };
 
   const handlePreviewPdf = async () => {
       if (!results || !params) return;
@@ -961,7 +592,7 @@ export default function App() {
             )}
 
             <div className="no-print">
-              <GeminiInsights params={params} results={results} isLoading={isLoading} setIsLoading={setIsLoading} appreciationRate={appreciationRate} closingCostRate={closingCostRate} includeCarryingCosts={includeCarryingCosts} />
+              <GeminiInsights params={params} results={results} isLoading={isLoading} setIsLoading={setIsLoading} appreciationRate={appreciationRate} closingCostRate={closingCostRate} includeCarryingCosts={includeCarryingCosts} analysis={analysis} onAnalysisChange={setAnalysis} />
             </div>
           </div>
         </div>

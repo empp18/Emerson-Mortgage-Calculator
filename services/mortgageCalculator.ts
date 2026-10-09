@@ -28,6 +28,16 @@ function calculatePAndI(principal: number, annualRate: number, years: number): n
   return principal * (monthlyRate * growth) / (growth - 1);
 }
 
+// Balance at the end of a loan year, or null once the loan is gone so a chart line stops at payoff
+export function yearEndBalance(schedule: AmortizationEntry[], periodsPerYear: number, year: number, principal: number): number | null {
+  if (year === 0) return principal;
+  const lastMonth = schedule.length ? schedule[schedule.length - 1].month : 0;
+  const payoffYear = Math.ceil(lastMonth / periodsPerYear);
+  if (year > payoffYear) return null;
+  const row = schedule.find(e => e.month >= year * periodsPerYear);
+  return row ? Math.round(row.remainingBalance) : 0;
+}
+
 // Annual extra-payment total implied by the form's amount and frequency
 export function annualExtraPaymentFor(params: Pick<MortgageParams, 'extraPayment' | 'extraPaymentFrequency'>): number {
   switch (params.extraPaymentFrequency) {
