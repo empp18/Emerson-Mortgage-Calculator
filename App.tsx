@@ -54,95 +54,6 @@ const PrintPreviewModal: React.FC<{
 };
 
 
-const ComparisonTable: React.FC<{ results: CalculationResults, params: MortgageParams }> = ({ results, params }) => {
-    const biWeeklyPAndI = results.biWeekly.summary.principalAndInterest / 2;
-    const monthlyEscrow = results.monthly.summary.taxes + results.monthly.summary.insurance + results.monthly.summary.hoa + results.monthly.summary.pmi;
-    const biWeeklyEscrow = monthlyEscrow * 12 / 26;
-    const biWeeklyPayment = biWeeklyPAndI + biWeeklyEscrow;
-
-    const annualExtraPayment = annualExtraPaymentFor(params);
-    const extraLabel = params.extraPaymentFrequency === 'annually'
-        ? `+ ${formatCurrency(annualExtraPayment)} / yr`
-        : `+ ${formatCurrency(annualExtraPayment / 26)} Extra`;
-
-    const getOneTimeMsg = (modeMatch: boolean) => {
-         if (params.oneTimePayment && params.oneTimePayment > 0 && modeMatch) {
-             return `+ ${formatCurrency(params.oneTimePayment)} (1x)`;
-         }
-         return '';
-    };
-
-    const scenarios = [
-        { 
-            title: 'Monthly', 
-            data: results.monthly.summary, 
-            paymentAmount: `${formatCurrency(results.monthly.summary.totalMonthlyPayment)} ${getOneTimeMsg(params.oneTimePaymentMode === 'monthly' || params.oneTimePaymentMode === 'all')}`
-        },
-        { 
-            title: 'Bi-Weekly', 
-            data: results.biWeekly.summary, 
-            paymentAmount: `${formatCurrency(biWeeklyPayment)} ${getOneTimeMsg(params.oneTimePaymentMode === 'biWeekly' || params.oneTimePaymentMode === 'all')}`
-        },
-        { 
-            title: 'Bi-Weekly v2.0', 
-            data: results.biWeeklyWithExtra.summary, 
-            paymentAmount: `${formatCurrency(biWeeklyPayment)} ${extraLabel} ${getOneTimeMsg(params.oneTimePaymentMode === 'biWeeklyWithExtra' || params.oneTimePaymentMode === 'all')}`
-        }
-    ];
-
-    const rows = [
-        { label: 'Payment', key: 'paymentAmount', tooltip: 'Includes Principal, Interest, and Escrow (Taxes, Insurance, HOA, PMI) per period.' },
-        { label: 'Payoff Date', key: 'payoffDate', tooltip: 'The projected date you will be completely debt-free.' },
-        { label: 'Time Saved', key: 'timeSaved', tooltip: 'How much sooner you pay off the loan compared to the standard Monthly schedule.' },
-        { label: 'Total Interest Paid', key: 'totalInterest', format: formatCurrency, tooltip: 'Total money paid to the bank in interest over the life of the loan. This is the true cost of borrowing.' },
-        { label: 'Interest Savings', key: 'interestSaved', format: formatCurrency, highlight: true, tooltip: 'The amount of money you save in interest payments by choosing this scenario over the standard Monthly plan.' },
-    ];
-
-    return (
-        <div className="bg-white p-4 md:p-5 rounded-2xl shadow-lg h-full">
-            <h2 className="text-xl font-bold text-brand-dark mb-3">Payment Scenario Comparison</h2>
-            <div className="overflow-x-auto">
-                <table className="min-w-full text-center">
-                    <thead>
-                        <tr>
-                            <th className="py-2 px-3 text-left text-xs font-semibold text-gray-600">Metric</th>
-                            {scenarios.map(s => <th key={s.title} className="py-2 px-3 text-xs font-bold text-brand-dark bg-brand-light rounded-t-lg">{s.title}</th>)}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rows.map((row, index) => (
-                            <tr key={row.label} className="border-t">
-                                <td className="py-3 px-3 text-left text-sm font-medium text-gray-800">
-                                    <div className="flex items-center">
-                                        {row.label}
-                                        {/* Place tooltip at bottom for first 3 rows to avoid clipping */}
-                                        {row.tooltip && <InfoTooltip text={row.tooltip} alignment="left" placement={index < 3 ? 'bottom' : 'top'} />}
-                                    </div>
-                                </td>
-                                {scenarios.map(s => {
-                                    if (row.key === 'interestSaved' && s.title === 'Monthly' && !s.data.interestSaved) {
-                                        return (
-                                            <td key={s.title} className="py-3 px-3 text-sm text-gray-800 font-normal">
-                                                (Baseline)
-                                            </td>
-                                        );
-                                    }
-                                    const value = s.data[row.key] ?? s[row.key];
-                                    return (
-                                        <td key={s.title} className={`py-3 px-3 text-sm ${row.highlight ? 'font-bold text-green-600' : 'text-gray-700'}`}>
-                                            {row.format ? row.format(value) : value}
-                                        </td>
-                                    );
-                                })}
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-};
-
 const PaymentBreakdown: React.FC<{ results: CalculationResults }> = ({ results }) => {
     const summary = results.monthly.summary;
     const firstMonthPayment = results.monthly.schedule.length > 0 ? results.monthly.schedule[0] : { principal: 0, interest: 0 };
@@ -155,36 +66,39 @@ const PaymentBreakdown: React.FC<{ results: CalculationResults }> = ({ results }
         { name: 'PMI', value: summary.pmi },
     ].filter(item => item.value > 0);
     
-    const COLORS = ['#005A9C', '#0094d4', '#7ac4e8', '#F2A900', '#ffc74f'];
+    const COLORS = ['#005A9C', '#A67700', '#1E7B4F', '#7AA7C7', '#B8C4D6'];
     const totalPaymentForPercentage = summary.totalMonthlyPayment > 0 ? summary.totalMonthlyPayment : 1;
 
     return (
-         <div className="bg-white p-6 md:p-8 rounded-2xl shadow-lg">
-             <h2 className="text-2xl font-bold text-brand-dark mb-2">Monthly Payment Breakdown</h2>
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-                <div className="space-y-3">
-                    <p className="text-5xl font-extrabold text-brand-dark mb-6">{formatCurrency(summary.totalMonthlyPayment)}</p>
-                    {paymentData.map((entry, index) => {
-                        const percentage = (entry.value / totalPaymentForPercentage) * 100;
-                        return (
-                            <div key={entry.name} className="flex justify-between items-center">
-                                <div className="flex items-center">
-                                    <div className="w-4 h-4 rounded-full mr-3" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
-                                    <span className="text-md text-gray-700">{entry.name}</span>
-                                </div>
-                                <div>
-                                    <span className="text-sm text-gray-500 mr-2">{`(${percentage.toFixed(1)}%)`}</span>
-                                    <span className="font-bold text-brand-dark">{formatCurrency(entry.value)}</span>
-                                </div>
-                            </div>
-                        );
-                    })}
-                    <div className="border-t pt-3 mt-3 flex justify-between items-center font-bold">
-                       <span className="text-lg text-brand-dark">Total Monthly</span>
-                       <span className="text-lg text-brand-dark">{formatCurrency(summary.totalMonthlyPayment)}</span>
-                    </div>
+        <div>
+            <h3 className="font-serif text-[21px] font-semibold text-brand-ink">Monthly payment breakdown</h3>
+            <p className="mb-4 mt-1 text-[13px] text-brand-muted">What the first month&apos;s payment covers</p>
+            <div className="grid grid-cols-1 items-center gap-6 md:grid-cols-2">
+                <div>
+                    <p className="font-serif text-[34px] font-semibold leading-none text-brand-ink tabular-nums">{formatCurrency(summary.totalMonthlyPayment)}</p>
+                    <ul className="mt-4 divide-y divide-brand-line">
+                        {paymentData.map((entry, index) => {
+                            const percentage = (entry.value / totalPaymentForPercentage) * 100;
+                            return (
+                                <li key={entry.name} className="flex items-center justify-between py-2.5 text-[15px]">
+                                    <span className="flex items-center gap-3 text-brand-ink">
+                                        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
+                                        {entry.name}
+                                    </span>
+                                    <span className="tabular-nums">
+                                        <span className="mr-2 text-[13px] text-brand-muted">{`${percentage.toFixed(1)}%`}</span>
+                                        <span className="font-bold text-brand-ink">{formatCurrency(entry.value)}</span>
+                                    </span>
+                                </li>
+                            );
+                        })}
+                        <li className="flex items-center justify-between py-2.5 text-[15px] font-semibold">
+                            <span className="text-brand-ink">Total monthly</span>
+                            <span className="tabular-nums text-brand-ink">{formatCurrency(summary.totalMonthlyPayment)}</span>
+                        </li>
+                    </ul>
                 </div>
-                <div className="w-full h-52">
+                <div className="h-52 w-full">
                     <ResponsiveContainer>
                         <PieChart>
                             <Pie
@@ -202,15 +116,18 @@ const PaymentBreakdown: React.FC<{ results: CalculationResults }> = ({ results }
                                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke={COLORS[index % COLORS.length]} />
                                 ))}
                             </Pie>
-                            <Tooltip formatter={(value: number) => {
-                                const percentage = (value / totalPaymentForPercentage) * 100;
-                                return `${formatCurrency(value)} (${percentage.toFixed(1)}%)`;
-                            }} />
+                            <Tooltip
+                                contentStyle={{ borderRadius: 12, borderColor: '#E3E6EC', boxShadow: 'none', fontSize: 13 }}
+                                formatter={(value: number) => {
+                                    const percentage = (value / totalPaymentForPercentage) * 100;
+                                    return `${formatCurrency(value)} (${percentage.toFixed(1)}%)`;
+                                }}
+                            />
                         </PieChart>
                     </ResponsiveContainer>
                 </div>
-             </div>
-         </div>
+            </div>
+        </div>
     );
 };
 
@@ -326,13 +243,13 @@ const AmortizationSchedule: React.FC<{ results: CalculationResults, params: Mort
     const CustomTooltip = ({ active, payload, label }: any) => {
         if (active && payload && payload.length) {
             return (
-                <div className="bg-white p-3 border border-gray-300 rounded-lg shadow-lg text-left">
-                    <p className="font-bold text-brand-dark mb-2">{`Year: ${label}`}</p>
+                <div className="rounded-[12px] border border-brand-line bg-white p-3 text-left">
+                    <p className="mb-2 font-semibold text-brand-ink">{`Year: ${label}`}</p>
                     <ul className="list-none p-0 m-0">
                         {payload.map((pld: any) => (
-                            <li key={pld.dataKey} style={{ color: pld.stroke || pld.fill }} className="text-sm flex items-center justify-between space-x-4">
-                               <span className="capitalize">{pld.name}:</span>
-                               <span className="font-bold">{formatCurrency(pld.value)}</span>
+                            <li key={pld.dataKey} style={{ color: pld.stroke || pld.fill }} className="flex items-center justify-between space-x-4 text-[13px]">
+                               <span>{pld.name}:</span>
+                               <span className="font-bold tabular-nums">{formatCurrency(pld.value)}</span>
                             </li>
                         ))}
                     </ul>
@@ -344,71 +261,68 @@ const AmortizationSchedule: React.FC<{ results: CalculationResults, params: Mort
 
     if (!showSchedule) {
         return (
-            <div className="text-center mt-8">
-                 <button onClick={() => setShowSchedule(true)} className="bg-brand-primary text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-800 transition duration-300">
-                     Show Interactive Charts & Schedule
+            <div>
+                 <button onClick={() => setShowSchedule(true)} className="rounded-[12px] bg-brand-primary px-5 py-3 text-[14px] font-semibold text-white hover:bg-brand-dark">
+                     Show interactive charts & schedule
                  </button>
             </div>
         )
     }
 
+    const tabClass = (active: boolean) =>
+        `whitespace-nowrap border-b-2 pb-2 text-[14px] font-semibold transition-colors ${active ? 'border-brand-primary text-brand-primary' : 'border-transparent text-brand-muted hover:text-brand-ink'}`;
+
     return (
-        <div id="amortization-section" className="bg-white p-6 md:p-8 rounded-2xl shadow-lg mt-8">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-brand-dark">Analysis & Schedule</h2>
-                <button onClick={() => setShowSchedule(false)} className="text-sm text-gray-600 hover:text-brand-primary">&times; Hide Section</button>
+        <div id="amortization-section">
+            <div className="mb-5 flex items-center justify-between gap-4">
+                <h3 className="font-serif text-[21px] font-semibold text-brand-ink">Analysis and schedule</h3>
+                <button onClick={() => setShowSchedule(false)} className="text-[13px] text-brand-muted hover:text-brand-primary">&times; Hide section</button>
             </div>
 
             {/* Chart Tabs */}
-            <div className="flex space-x-4 mb-6 border-b">
-                <button 
-                    onClick={() => setChartTab('balance')} 
-                    className={`pb-2 px-4 text-sm font-medium border-b-2 transition-colors ${chartTab === 'balance' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-                >
-                    Loan Balance Comparison
+            <div className="mb-5 flex gap-5 border-b border-brand-line">
+                <button onClick={() => setChartTab('balance')} className={tabClass(chartTab === 'balance')}>
+                    Loan balance comparison
                 </button>
-                <button 
-                    onClick={() => setChartTab('equity')} 
-                    className={`pb-2 px-4 text-sm font-medium border-b-2 transition-colors ${chartTab === 'equity' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-                >
-                    Equity vs. Interest
+                <button onClick={() => setChartTab('equity')} className={tabClass(chartTab === 'equity')}>
+                    Equity vs. interest
                 </button>
             </div>
 
             {/* Chart Area */}
-            <div className="w-full h-[350px] md:h-[400px] mb-8 relative">
+            <div className="relative mb-8 h-[350px] w-full md:h-[400px]">
                 {chartTab === 'balance' ? (
                     <>
-                        <h3 className="text-xl font-bold text-brand-dark mb-4 text-center">Loan Balance Over Time</h3>
+                        <h4 className="mb-3 text-center text-[15px] font-semibold text-brand-ink">Loan balance over time</h4>
                         <ResponsiveContainer>
                             <LineChart data={yearlyBalanceData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" />
+                                <CartesianGrid strokeDasharray="3 3" stroke="#E3E6EC" />
                                 <XAxis 
                                     dataKey="year" 
-                                    label={{ value: '(years)', position: 'insideBottomRight', offset: -10 }}
-                                    fontSize={12}
+                                    label={{ value: '(years)', position: 'insideBottomRight', offset: -10, fill: '#5B6577', fontSize: 12 }}
+                                    tick={{ fill: '#5B6577', fontSize: 12 }}
                                     minTickGap={20}
                                 />
                                 <YAxis 
                                     tickFormatter={(tick) => formatCurrency(tick)} 
-                                    fontSize={12}
+                                    tick={{ fill: '#5B6577', fontSize: 12 }}
                                     width={80}
                                 />
                                 <Tooltip content={<CustomTooltip />} />
-                                <Legend wrapperStyle={{ paddingTop: '10px' }}/>
-                                <Line type="monotone" dataKey="Monthly" stroke="#005A9C" dot={false} strokeWidth={2} />
-                                <Line type="monotone" dataKey="Bi-Weekly" stroke="#F2A900" dot={false} strokeWidth={2} />
-                                <Line type="monotone" dataKey="Bi-Weekly v2.0" stroke="#22c55e" dot={false} strokeWidth={2} />
+                                <Legend wrapperStyle={{ paddingTop: '10px', fontSize: 13 }}/>
+                                <Line type="monotone" dataKey="Monthly" stroke="#005A9C" dot={false} strokeWidth={2.5} />
+                                <Line type="monotone" dataKey="Bi-Weekly" stroke="#1E7B4F" dot={false} strokeWidth={2.5} />
+                                <Line type="monotone" dataKey="Bi-Weekly v2.0" stroke="#A67700" dot={false} strokeWidth={2.5} />
                             </LineChart>
                         </ResponsiveContainer>
                     </>
                 ) : (
                     <>
-                        <div className="flex flex-wrap justify-center items-center gap-2 sm:space-x-4 mb-4 absolute top-0 left-0 right-0 z-10">
+                        <div className="absolute left-0 right-0 top-0 z-10 flex flex-wrap items-center justify-center gap-2">
                             <select 
                                 value={equityScenario} 
                                 onChange={(e) => setEquityScenario(e.target.value as any)}
-                                className="text-sm border-gray-300 rounded-md shadow-sm focus:border-brand-primary focus:ring focus:ring-brand-primary focus:ring-opacity-50 bg-white/90 backdrop-blur-sm p-1.5"
+                                className="rounded-[10px] border border-brand-line bg-white px-2.5 py-1.5 text-[13px] text-brand-ink focus:border-brand-primary focus:outline-none"
                             >
                                 <option value="monthly">Scenario: Monthly</option>
                                 <option value="biWeekly">Scenario: Bi-Weekly</option>
@@ -419,23 +333,23 @@ const AmortizationSchedule: React.FC<{ results: CalculationResults, params: Mort
                             <AreaChart data={equityData} margin={{ top: 40, right: 20, left: 20, bottom: 5 }}>
                                 <defs>
                                     <linearGradient id="colorEquity" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#22c55e" stopOpacity={0.8}/>
-                                        <stop offset="95%" stopColor="#22c55e" stopOpacity={0.1}/>
+                                        <stop offset="5%" stopColor="#1E7B4F" stopOpacity={0.6}/>
+                                        <stop offset="95%" stopColor="#1E7B4F" stopOpacity={0.05}/>
                                     </linearGradient>
                                     <linearGradient id="colorInterest" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8}/>
-                                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0.1}/>
+                                        <stop offset="5%" stopColor="#A67700" stopOpacity={0.6}/>
+                                        <stop offset="95%" stopColor="#A67700" stopOpacity={0.05}/>
                                     </linearGradient>
                                 </defs>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="year" label={{ value: '(years)', position: 'insideBottomRight', offset: -10 }} fontSize={12} />
-                                <YAxis tickFormatter={(tick) => formatCurrency(tick)} fontSize={12} width={80} />
+                                <CartesianGrid strokeDasharray="3 3" stroke="#E3E6EC" />
+                                <XAxis dataKey="year" label={{ value: '(years)', position: 'insideBottomRight', offset: -10, fill: '#5B6577', fontSize: 12 }} tick={{ fill: '#5B6577', fontSize: 12 }} />
+                                <YAxis tickFormatter={(tick) => formatCurrency(tick)} tick={{ fill: '#5B6577', fontSize: 12 }} width={80} />
                                 <Tooltip content={<CustomTooltip />} />
-                                <Legend wrapperStyle={{ paddingTop: '10px' }}/>
-                                <Line type="monotone" dataKey="homeValue" name="Home Value" stroke="#8884d8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                                <Area type="monotone" dataKey="equity" name="Equity Gained" stroke="#22c55e" fillOpacity={1} fill="url(#colorEquity)" />
-                                <Area type="monotone" dataKey="interestPaid" name="Interest Paid" stroke="#ef4444" fillOpacity={1} fill="url(#colorInterest)" />
-                                <Line type="monotone" dataKey="balance" name="Remaining Balance" stroke="#F2A900" strokeWidth={3} dot={false} />
+                                <Legend wrapperStyle={{ paddingTop: '10px', fontSize: 13 }}/>
+                                <Line type="monotone" dataKey="homeValue" name="Home Value" stroke="#5B6577" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                                <Area type="monotone" dataKey="equity" name="Equity Gained" stroke="#1E7B4F" fillOpacity={1} fill="url(#colorEquity)" />
+                                <Area type="monotone" dataKey="interestPaid" name="Interest Paid" stroke="#A67700" fillOpacity={1} fill="url(#colorInterest)" />
+                                <Line type="monotone" dataKey="balance" name="Remaining Balance" stroke="#14213D" strokeWidth={2.5} dot={false} />
                             </AreaChart>
                         </ResponsiveContainer>
                     </>
@@ -444,46 +358,36 @@ const AmortizationSchedule: React.FC<{ results: CalculationResults, params: Mort
 
             {/* Schedule Table */}
             <div>
-                <div className="border-b border-gray-200">
-                    <nav className="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
-                        {TABS.map(tab => (
-                             <button
-                                key={tab.id}
-                                onClick={() => setActiveTab(tab.id)}
-                                className={`${
-                                    activeTab === tab.id
-                                    ? 'border-brand-primary text-brand-primary'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors`}
-                            >
-                                {tab.label}
-                            </button>
-                        ))}
-                    </nav>
-                </div>
+                <nav className="flex gap-6 overflow-x-auto border-b border-brand-line" aria-label="Schedule scenarios">
+                    {TABS.map(tab => (
+                        <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={tabClass(activeTab === tab.id)}>
+                            {tab.label}
+                        </button>
+                    ))}
+                </nav>
 
-                <div className="mt-4 overflow-auto max-h-[600px] rounded-lg border">
-                    <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50 sticky top-0 z-20">
+                <div className="mt-4 max-h-[600px] overflow-auto rounded-[12px] border border-brand-line">
+                    <table className="min-w-full">
+                        <thead className="sticky top-0 z-20 bg-brand-paper">
                             <tr>
-                                {['Period', 'Date', 'Balance', 'Principal', 'Interest', 'Extra', 'Total Payment', 'Ending Balance'].map(header => (
-                                     <th key={header} scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                {['Period', 'Date', 'Balance', 'Principal', 'Interest', 'Extra', 'Total payment', 'Ending balance'].map(header => (
+                                     <th key={header} scope="col" className="whitespace-nowrap px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-brand-muted">
                                          {header}
                                      </th>
                                 ))}
                             </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
+                        <tbody className="divide-y divide-brand-line bg-white">
                             {activeData.schedule.map((entry) => (
-                                <tr key={entry.month}>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{entry.month}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{entry.paymentDate}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatCurrency(entry.beginningBalance)}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatCurrency(entry.principal)}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatCurrency(entry.interest)}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">{formatCurrency(entry.extraPayment)}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-800">{formatCurrency(entry.totalPayment)}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-brand-dark">{formatCurrency(entry.remainingBalance)}</td>
+                                <tr key={entry.month} className="text-[13px] tabular-nums">
+                                    <td className="whitespace-nowrap px-4 py-2.5 font-medium text-brand-ink">{entry.month}</td>
+                                    <td className="whitespace-nowrap px-4 py-2.5 text-brand-muted">{entry.paymentDate}</td>
+                                    <td className="whitespace-nowrap px-4 py-2.5 text-brand-muted">{formatCurrency(entry.beginningBalance)}</td>
+                                    <td className="whitespace-nowrap px-4 py-2.5 text-brand-muted">{formatCurrency(entry.principal)}</td>
+                                    <td className="whitespace-nowrap px-4 py-2.5 text-brand-muted">{formatCurrency(entry.interest)}</td>
+                                    <td className="whitespace-nowrap px-4 py-2.5 text-[#1E7B4F]">{formatCurrency(entry.extraPayment)}</td>
+                                    <td className="whitespace-nowrap px-4 py-2.5 font-semibold text-brand-ink">{formatCurrency(entry.totalPayment)}</td>
+                                    <td className="whitespace-nowrap px-4 py-2.5 font-bold text-brand-ink">{formatCurrency(entry.remainingBalance)}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -511,36 +415,33 @@ const LoanDetails: React.FC<{ params: MortgageParams }> = ({ params }) => {
         { label: "Homeowner's Insurance", value: `${formatCurrency(params.homeownersInsurance)} / year`, tooltip: 'Estimated annual insurance premium. Typically divided by 12 and collected monthly into an Escrow account.' },
     ];
 
+    const DetailRow: React.FC<{ label: string; value: string; tooltip?: string; placement?: 'top' | 'bottom' }> = ({ label, value, tooltip, placement }) => (
+        <li className="flex items-center justify-between py-2.5 text-[15px]">
+            <div className="flex items-center">
+                <span className="text-brand-muted">{label}</span>
+                {tooltip && <InfoTooltip text={tooltip} alignment="left" placement={placement} />}
+            </div>
+            <span className="font-semibold tabular-nums text-brand-ink">{value}</span>
+        </li>
+    );
+
     return (
-        <div className="bg-white p-4 md:p-5 rounded-2xl shadow-lg h-full">
-            <h2 className="text-xl font-bold text-brand-dark mb-3">Loan Details</h2>
-            <ul className="space-y-2">
-                {coreDetails.map(detail => (
-                     <li key={detail.label} className="flex justify-between items-center text-sm">
-                         <div className="flex items-center">
-                             <span className="font-medium text-gray-600">{detail.label}</span>
-                             {detail.tooltip && <InfoTooltip text={detail.tooltip} alignment="left" placement={detail.placement} />}
-                         </div>
-                         <span className="font-bold text-brand-dark">{detail.value}</span>
-                     </li>
-                ))}
-            </ul>
-            <hr className="my-3 border-gray-200" />
-            <ul className="space-y-2">
-                 {escrowDetails.map(detail => (
-                     <li key={detail.label} className="flex justify-between items-center text-sm">
-                         <div className="flex items-center">
-                             <span className="font-medium text-gray-600">{detail.label}</span>
-                             {detail.tooltip && <InfoTooltip text={detail.tooltip} alignment="left" />}
-                         </div>
-                         <span className="font-bold text-brand-dark">{detail.value}</span>
-                     </li>
-                ))}
-            </ul>
+        <div className="grid grid-cols-1 gap-x-10 md:grid-cols-2">
+            <div>
+                <h3 className="font-serif text-[21px] font-semibold text-brand-ink">Loan details</h3>
+                <ul className="mt-3 divide-y divide-brand-line">
+                    {coreDetails.map(detail => <DetailRow key={detail.label} {...detail} />)}
+                </ul>
+            </div>
+            <div>
+                <h3 className="font-serif text-[21px] font-semibold text-brand-ink">Ownership costs</h3>
+                <ul className="mt-3 divide-y divide-brand-line">
+                    {escrowDetails.map(detail => <DetailRow key={detail.label} {...detail} />)}
+                </ul>
+            </div>
         </div>
     );
 };
-
 
 export default function App() {
   const [params, setParams] = useState<MortgageParams | null>(null);
@@ -1044,18 +945,15 @@ export default function App() {
                 </details>
 
                 <details className="group rounded-2xl border border-brand-line bg-white p-6 md:p-8">
-                  <summary className="cursor-pointer font-serif text-xl font-semibold text-brand-dark">Payment details, comparison and schedule</summary>
+                  <summary className="cursor-pointer font-serif text-xl font-semibold text-brand-dark">Payment details and schedule</summary>
                   <div className="mt-6 space-y-8">
                     <PaymentBreakdown results={results} />
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                      <div className="lg:col-span-1">
-                        <LoanDetails params={params} />
-                      </div>
-                      <div className="lg:col-span-2">
-                        <ComparisonTable results={results} params={params} />
-                      </div>
+                    <div className="border-t border-brand-line pt-8">
+                      <LoanDetails params={params} />
                     </div>
-                    <AmortizationSchedule results={results} params={params} appreciationRate={appreciationRate} />
+                    <div className="border-t border-brand-line pt-8">
+                      <AmortizationSchedule results={results} params={params} appreciationRate={appreciationRate} />
+                    </div>
                   </div>
                 </details>
               </div>
