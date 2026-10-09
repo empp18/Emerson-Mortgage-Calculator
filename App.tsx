@@ -1004,35 +1004,26 @@ export default function App() {
         isGenerating={isGeneratingPdf}
         generationStatus={pdfGenerationStatus}
     />
-    <div className="bg-brand-paper min-h-screen text-gray-800">
-      <div className="bg-brand-dark text-white text-sm px-4 py-2 text-center border-b border-white/10">
-        Presented by <span className="font-bold text-brand-secondary">Emerson Pinto</span>
-      </div>
-      <header className="bg-brand-dark shadow-md">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <div className="flex items-center">
-            <svg className="w-10 h-10 text-brand-secondary mr-3" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" /></svg>
-            <h1 className="text-xl md:text-2xl font-bold text-white tracking-tight">Mortgage Amortization Calculator</h1>
+    <div className="bg-brand-paper min-h-screen text-brand-ink">
+      <header className="border-b border-brand-line bg-white">
+        <div className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-3 px-4 py-3.5 md:px-8">
+          <span className="rounded-full border border-brand-line bg-brand-paper px-3 py-1 text-[12.5px] font-semibold text-brand-dark">
+            Presented by Emerson Pinto
+          </span>
+          <span className="font-serif text-[17px] font-semibold text-brand-ink">Mortgage Calculator</span>
+          <div className="flex gap-2">
+            <button type="button" onClick={handlePreviewPdf} disabled={!results} className="rounded-full border border-brand-line bg-white px-3.5 py-[7px] text-[13px] font-semibold text-brand-ink hover:bg-brand-paper disabled:cursor-not-allowed disabled:opacity-40">
+              Print
+            </button>
+            <button type="button" onClick={handleDownloadPdf} disabled={!results || isDownloadingPdf} className="rounded-full border border-brand-line bg-white px-3.5 py-[7px] text-[13px] font-semibold text-brand-ink hover:bg-brand-paper disabled:cursor-not-allowed disabled:opacity-40">
+              {isDownloadingPdf ? 'Saving…' : 'Save PDF'}
+            </button>
           </div>
-           {results && (
-                <div className="flex items-center space-x-2">
-                    <button onClick={handleDownloadPdf} disabled={isDownloadingPdf} className="p-2 rounded-full text-white bg-white/10 hover:bg-white/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Download PDF">
-                        {isDownloadingPdf ? (
-                            <svg className="animate-spin h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                        ) : (
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                        )}
-                    </button>
-                    <button onClick={handlePreviewPdf} className="p-2 rounded-full text-white bg-white/10 hover:bg-white/20 transition-colors" title="Print Preview">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                    </button>
-                </div>
-            )}
         </div>
       </header>
 
-      <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div id="main-content" className="lg:grid lg:grid-cols-[360px_minmax(0,1fr)] lg:gap-8 lg:items-start">
+      <main className="mx-auto max-w-[1180px] px-4 py-8 md:px-8">
+        <div id="main-content" className="lg:grid lg:grid-cols-[340px_minmax(0,1fr)] lg:items-start lg:gap-9">
           <aside className="mb-8 lg:mb-0 lg:sticky lg:top-6">
             <CalculatorForm onCalculate={handleCalculate} appreciationRate={appreciationRate} onAppreciationRateChange={setAppreciationRate} />
           </aside>
