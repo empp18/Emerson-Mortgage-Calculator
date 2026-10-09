@@ -7,6 +7,7 @@ interface ResultHeadlineProps {
   results: CalculationResults;
   appreciationRate: number;
   includeCarryingCosts: boolean;
+  closingCostRate: number;
 }
 
 const SALE_YEAR = 7;
@@ -15,8 +16,8 @@ const money = (value: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Math.abs(value));
 
 // Plain-language summary of the 7-year sale, built from the same figures as the breakdown table
-export const ResultHeadline: React.FC<ResultHeadlineProps> = ({ params, results, appreciationRate, includeCarryingCosts }) => {
-  const { netProceeds, trueNetGain } = getScenarioSnapshots(results, params, SALE_YEAR, appreciationRate, includeCarryingCosts).monthly;
+export const ResultHeadline: React.FC<ResultHeadlineProps> = ({ params, results, appreciationRate, includeCarryingCosts, closingCostRate }) => {
+  const { netProceeds, trueNetGain } = getScenarioSnapshots(results, params, SALE_YEAR, appreciationRate, includeCarryingCosts, closingCostRate).monthly;
 
   const closing = netProceeds >= 0
     ? `you would get ${money(netProceeds)} at closing`

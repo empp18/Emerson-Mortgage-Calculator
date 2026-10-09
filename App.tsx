@@ -448,6 +448,7 @@ export default function App() {
   const [results, setResults] = useState<CalculationResults | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [appreciationRate, setAppreciationRate] = useState(3.5);
+  const [closingCostRate, setClosingCostRate] = useState(6);
   const [includeCarryingCosts, setIncludeCarryingCosts] = useState(false);
   
   const [showPrintModal, setShowPrintModal] = useState(false);
@@ -546,7 +547,7 @@ export default function App() {
       if (i === 1) {
         doc.setFontSize(8);
         doc.text(
-          `Estimates only. Assumes ${appreciationRate}% appreciation & 8% closing costs${includeCarryingCosts ? '; includes taxes, insurance, HOA & PMI' : ''}.`,
+          `Estimates only. Assumes ${appreciationRate}% appreciation & ${closingCostRate}% closing costs${includeCarryingCosts ? '; includes taxes, insurance, HOA & PMI' : ''}.`,
           margin,
           footerY + 12
         );
@@ -774,7 +775,7 @@ export default function App() {
     doc.text(`Timeline: ${year} Years`, margin, y);
     y += 14;
 
-    const { monthly: mSnap, biWeekly: bSnap, biWeeklyExtra: eSnap } = getScenarioSnapshots(results, params, year, appreciationRate, includeCarryingCosts);
+    const { monthly: mSnap, biWeekly: bSnap, biWeeklyExtra: eSnap } = getScenarioSnapshots(results, params, year, appreciationRate, includeCarryingCosts, closingCostRate);
 
     const fmt = (n: number) => formatCurrency(Math.round(n));
 
@@ -926,21 +927,21 @@ export default function App() {
       <main className="mx-auto max-w-[1180px] px-4 py-8 md:px-8">
         <div id="main-content" className="lg:grid lg:grid-cols-[340px_minmax(0,1fr)] lg:items-start lg:gap-9">
           <aside className="mb-8 lg:mb-0 lg:sticky lg:top-6">
-            <CalculatorForm onCalculate={handleCalculate} appreciationRate={appreciationRate} onAppreciationRateChange={setAppreciationRate} />
+            <CalculatorForm onCalculate={handleCalculate} appreciationRate={appreciationRate} onAppreciationRateChange={setAppreciationRate} closingCostRate={closingCostRate} onClosingCostRateChange={setClosingCostRate} />
           </aside>
 
           <div className="min-w-0 space-y-6">
             {results && params && (
               <div id="results-container" className="space-y-6">
-                <ResultHeadline params={params} results={results} appreciationRate={appreciationRate} includeCarryingCosts={includeCarryingCosts} />
-                <WalkAwayCard params={params} results={results} appreciationRate={appreciationRate} includeCarryingCosts={includeCarryingCosts} onIncludeCarryingCostsChange={setIncludeCarryingCosts} />
-                <PlanCards params={params} results={results} appreciationRate={appreciationRate} includeCarryingCosts={includeCarryingCosts} />
+                <ResultHeadline params={params} results={results} appreciationRate={appreciationRate} closingCostRate={closingCostRate} includeCarryingCosts={includeCarryingCosts} />
+                <WalkAwayCard params={params} results={results} appreciationRate={appreciationRate} closingCostRate={closingCostRate} includeCarryingCosts={includeCarryingCosts} onIncludeCarryingCostsChange={setIncludeCarryingCosts} />
+                <PlanCards params={params} results={results} appreciationRate={appreciationRate} closingCostRate={closingCostRate} includeCarryingCosts={includeCarryingCosts} />
                 <BalanceChartCard params={params} results={results} />
 
                 <details className="group rounded-2xl border border-brand-line bg-white p-6 md:p-8">
                   <summary className="cursor-pointer font-serif text-xl font-semibold text-brand-dark">Show the math</summary>
                   <div className="mt-6">
-                    <FinancialBreakdown params={params} results={results} appreciationRate={appreciationRate} includeCarryingCosts={includeCarryingCosts} />
+                    <FinancialBreakdown params={params} results={results} appreciationRate={appreciationRate} closingCostRate={closingCostRate} includeCarryingCosts={includeCarryingCosts} />
                   </div>
                 </details>
 
@@ -960,7 +961,7 @@ export default function App() {
             )}
 
             <div className="no-print">
-              <GeminiInsights params={params} results={results} isLoading={isLoading} setIsLoading={setIsLoading} appreciationRate={appreciationRate} includeCarryingCosts={includeCarryingCosts} />
+              <GeminiInsights params={params} results={results} isLoading={isLoading} setIsLoading={setIsLoading} appreciationRate={appreciationRate} closingCostRate={closingCostRate} includeCarryingCosts={includeCarryingCosts} />
             </div>
           </div>
         </div>

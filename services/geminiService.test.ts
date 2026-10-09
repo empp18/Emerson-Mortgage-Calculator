@@ -33,13 +33,13 @@ const results = calculateAllScenarios(params, START);
 const LOAN = HOME - DOWN;
 
 describe('getSnapshotAtYear: sale-side metrics', () => {
-  const snap = getSnapshotAtYear(results.monthly.schedule, 7, HOME, DOWN, false, 3.5);
+  const snap = getSnapshotAtYear(results.monthly.schedule, 7, HOME, DOWN, false, 3.5, undefined, 8);
 
   it('future value compounds appreciation from the purchase price', () => {
     expect(snap.futureValue).toBeCloseTo(HOME * Math.pow(1.035, 7), 2);
   });
 
-  it('closing costs are 8% of future value and net proceeds subtract them and the loan', () => {
+  it('closing costs at 8% are 8% of future value and net proceeds subtract them and the loan', () => {
     expect(snap.closingCosts).toBeCloseTo(snap.futureValue * 0.08, 2);
     expect(snap.netProceeds).toBeCloseTo(snap.futureValue - snap.closingCosts - snap.remainingBalance, 2);
   });
@@ -66,6 +66,30 @@ describe('getSnapshotAtYear: sale-side metrics', () => {
     const rows = results.monthly.schedule.filter(r => r.month <= 84);
     const interest = rows.reduce((t, r) => t + r.interest, 0);
     expect(snap.totalInterestToDate).toBeCloseTo(interest, 2);
+  });
+});
+
+describe('getSnapshotAtYear: closing cost rate', () => {
+  const schedule = results.monthly.schedule;
+
+  it('defaults to 6% of future value when no rate is passed', () => {
+    const snap = getSnapshotAtYear(schedule, 7, HOME, DOWN, false, 3.5);
+    expect(snap.closingCosts).toBeCloseTo(snap.futureValue * 0.06, 2);
+    expect(snap.netProceeds).toBeCloseTo(snap.futureValue * 0.94 - snap.remainingBalance, 2);
+  });
+
+  it('uses an explicit 6% the same as the default', () => {
+    const implicit = getSnapshotAtYear(schedule, 7, HOME, DOWN, false, 3.5);
+    const explicit = getSnapshotAtYear(schedule, 7, HOME, DOWN, false, 3.5, undefined, 6);
+    expect(explicit.closingCosts).toBeCloseTo(implicit.closingCosts, 6);
+    expect(explicit.trueNetGain).toBeCloseTo(implicit.trueNetGain, 6);
+  });
+
+  it('getScenarioSnapshots passes the rate to every plan', () => {
+    const snaps = getScenarioSnapshots(results, params, 7, 3.5, false, 6);
+    for (const plan of [snaps.monthly, snaps.biWeekly, snaps.biWeeklyExtra]) {
+      expect(plan.closingCosts).toBeCloseTo(plan.futureValue * 0.06, 2);
+    }
   });
 });
 
@@ -117,7 +141,7 @@ describe('getSnapshotAtYear: loan already paid off', () => {
 });
 
 describe('getSnapshotAtYear: no loan (100% down)', () => {
-  const snap = getSnapshotAtYear([], 7, HOME, HOME, false, 3.5);
+  const snap = getSnapshotAtYear([], 7, HOME, HOME, false, 3.5, undefined, 8);
 
   it('true gain is sale net of closing costs minus purchase price', () => {
     expect(snap.trueGain).toBeCloseTo(snap.futureValue * 0.92 - HOME, 2);

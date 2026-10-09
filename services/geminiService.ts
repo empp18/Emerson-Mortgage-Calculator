@@ -30,10 +30,13 @@ export function getSnapshotAtYear(
     downPayment: number,
     isBiWeekly: boolean,
     appreciationRate: number = 3.5,
-    carrying?: CarryingCosts
+    carrying?: CarryingCosts,
+    closingCostRate: number = 6 // percent of the sale price, paid at closing
 ): SnapshotMetrics {
     const rateDecimal = appreciationRate / 100;
     const growthFactor = Math.pow(1 + rateDecimal, year);
+    const closingShare = closingCostRate / 100;
+    const keepShare = 1 - closingShare;
 
     // Safety check for empty schedules (e.g. 100% down payment)
     if (!schedule || schedule.length === 0) {
@@ -46,12 +49,12 @@ export function getSnapshotAtYear(
             futureValue: futureVal,
             remainingBalance: 0,
             totalInterestToDate: 0,
-            closingCosts: futureVal * 0.08,
-            netProceeds: futureVal * 0.92,
+            closingCosts: futureVal * closingShare,
+            netProceeds: futureVal * keepShare,
             principalPaidToDate: 0,
             carryingCostsToDate,
-            trueGain: (futureVal * 0.92) - initialHomePrice,
-            trueNetGain: (futureVal * 0.92) - initialHomePrice - carryingCostsToDate
+            trueGain: (futureVal * keepShare) - initialHomePrice,
+            trueNetGain: (futureVal * keepShare) - initialHomePrice - carryingCostsToDate
         };
     }
 
@@ -67,7 +70,7 @@ export function getSnapshotAtYear(
 
     // Appreciation Calc
     const futureValue = initialHomePrice * growthFactor;
-    const closingCosts = futureValue * 0.08; // 8% fees
+    const closingCosts = futureValue * closingShare; // agent fees and transfer taxes
     
     // If the loan was paid off before this year, balance is 0.
     // We check if the last entry in the schedule happened BEFORE our target year.
@@ -130,15 +133,16 @@ export function getScenarioSnapshots(
     params: MortgageParams,
     year: number,
     appreciationRate: number,
-    includeCarryingCosts: boolean
+    includeCarryingCosts: boolean,
+    closingCostRate: number = 6
 ) {
     const carrying = includeCarryingCosts
         ? { propertyTaxes: params.propertyTaxes, homeownersInsurance: params.homeownersInsurance, hoaDues: params.hoaDues }
         : undefined;
     return {
-        monthly: getSnapshotAtYear(results.monthly.schedule, year, params.homePrice, params.downPayment, false, appreciationRate, carrying),
-        biWeekly: getSnapshotAtYear(results.biWeekly.schedule, year, params.homePrice, params.downPayment, true, appreciationRate, carrying),
-        biWeeklyExtra: getSnapshotAtYear(results.biWeeklyWithExtra.schedule, year, params.homePrice, params.downPayment, true, appreciationRate, carrying),
+        monthly: getSnapshotAtYear(results.monthly.schedule, year, params.homePrice, params.downPayment, false, appreciationRate, carrying, closingCostRate),
+        biWeekly: getSnapshotAtYear(results.biWeekly.schedule, year, params.homePrice, params.downPayment, true, appreciationRate, carrying, closingCostRate),
+        biWeeklyExtra: getSnapshotAtYear(results.biWeeklyWithExtra.schedule, year, params.homePrice, params.downPayment, true, appreciationRate, carrying, closingCostRate),
     };
 }
 
@@ -179,11 +183,12 @@ export function getTimelineSnapshots(
     results: CalculationResults,
     params: MortgageParams,
     appreciationRate: number,
-    includeCarryingCosts: boolean
+    includeCarryingCosts: boolean,
+    closingCostRate: number = 6
 ): TimelinePoint[] {
     return INSIGHT_YEARS.map(year => ({
         year,
-        plans: getScenarioSnapshots(results, params, year, appreciationRate, includeCarryingCosts),
+        plans: getScenarioSnapshots(results, params, year, appreciationRate, includeCarryingCosts, closingCostRate),
     }));
 }
 
@@ -289,7 +294,7 @@ export function parseMortgageInsights(text: string | null | undefined, timeline:
     };
 }
 
-const buildInsightsPrompt = (params: MortgageParams, timeline: TimelinePoint[], appreciationRate: number, includeCarryingCosts: boolean) => `
+const buildInsightsPrompt = (params: MortgageParams, timeline: TimelinePoint[], appreciationRate: number, includeCarryingCosts: boolean, closingCostRate: number) => `
     You are an expert real estate financial analyst. Analyze the following mortgage scenarios to provide high-level strategic advice.
 
     **Core Philosophy:**
@@ -297,7 +302,7 @@ const buildInsightsPrompt = (params: MortgageParams, timeline: TimelinePoint[], 
 
     Therefore, you must calculate not only equity and net sale proceeds, but also total interest paid. You must then evaluate the "True Gain" and "True Net Gain":
 
-    - **Net Proceeds**: Sale Price - Closing Costs (8%) - Remaining Mortgage Balance.
+    - **Net Proceeds**: Sale Price - Closing Costs (${closingCostRate}%) - Remaining Mortgage Balance.
     - **True Gain**: Net Proceeds - Original Down Payment - Principal Paid. (Principal paid came out of the homeowner's pocket, so getting it back at closing is not a gain. This equals Sale Price - Closing Costs - Original Purchase Price.)
     - **True Net Gain**: True Gain - Total Interest Paid${includeCarryingCosts ? ' - Carrying Costs (property taxes, insurance, HOA and PMI paid)' : ''}.
 
@@ -309,7 +314,7 @@ const buildInsightsPrompt = (params: MortgageParams, timeline: TimelinePoint[], 
     - Rate: ${params.interestRate}%
     - Assumed Appreciation Rate: ${appreciationRate}%
 
-    **Financial Analysis at Median Selling Timelines (assuming ${appreciationRate}% appreciation & 8% Closing Costs):**
+    **Financial Analysis at Median Selling Timelines (assuming ${appreciationRate}% appreciation & ${closingCostRate}% Closing Costs):**
 
     ${timeline.map(({ year, plans }) => `
     --- TIMELINE: ${year} YEARS ---
@@ -342,9 +347,10 @@ export async function getMortgageInsights(
     params: MortgageParams,
     results: CalculationResults,
     appreciationRate: number,
-    includeCarryingCosts: boolean = false
+    includeCarryingCosts: boolean = false,
+    closingCostRate: number = 6
 ): Promise<MortgageInsights> {
-    const timeline = getTimelineSnapshots(results, params, appreciationRate, includeCarryingCosts);
+    const timeline = getTimelineSnapshots(results, params, appreciationRate, includeCarryingCosts, closingCostRate);
 
     if (!process.env.API_KEY) {
         console.error("API_KEY environment variable not set.");
@@ -355,7 +361,7 @@ export async function getMortgageInsights(
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: buildInsightsPrompt(params, timeline, appreciationRate, includeCarryingCosts),
+            contents: buildInsightsPrompt(params, timeline, appreciationRate, includeCarryingCosts, closingCostRate),
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {

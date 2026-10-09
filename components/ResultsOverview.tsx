@@ -29,13 +29,14 @@ interface WalkAwayCardProps {
   params: MortgageParams;
   results: CalculationResults;
   appreciationRate: number;
+  closingCostRate: number;
   includeCarryingCosts: boolean;
   onIncludeCarryingCostsChange: (include: boolean) => void;
 }
 
 // Where the sale check goes, one step at a time, ending at the true net gain
-export const WalkAwayCard: React.FC<WalkAwayCardProps> = ({ params, results, appreciationRate, includeCarryingCosts, onIncludeCarryingCostsChange }) => {
-  const s = getScenarioSnapshots(results, params, SALE_YEAR, appreciationRate, includeCarryingCosts).monthly;
+export const WalkAwayCard: React.FC<WalkAwayCardProps> = ({ params, results, appreciationRate, closingCostRate, includeCarryingCosts, onIncludeCarryingCostsChange }) => {
+  const s = getScenarioSnapshots(results, params, SALE_YEAR, appreciationRate, includeCarryingCosts, closingCostRate).monthly;
 
   const Step: React.FC<{ n: string; label: string; value: number; final?: boolean }> = ({ n, label, value, final }) => (
     <div className="grid grid-cols-[30px_1fr_auto] items-center gap-3 py-[11px] text-[15px]">
@@ -47,7 +48,7 @@ export const WalkAwayCard: React.FC<WalkAwayCardProps> = ({ params, results, app
 
   return (
     <Card>
-      <CardTitle sub={`Monthly plan · ${appreciationRate}% appreciation · 8% closing costs`}>Where the check goes</CardTitle>
+      <CardTitle sub={`Monthly plan · ${appreciationRate}% appreciation · ${closingCostRate}% closing costs`}>Where the check goes</CardTitle>
       <div className="divide-y divide-brand-line">
         <Step n="1" label="Check at closing" value={s.netProceeds} />
         <Step n="2" label="Less the down payment you put in" value={-params.downPayment} />
@@ -76,12 +77,13 @@ interface PlanCardsProps {
   params: MortgageParams;
   results: CalculationResults;
   appreciationRate: number;
+  closingCostRate: number;
   includeCarryingCosts: boolean;
 }
 
 // The three payment plans side by side: monthly payment, payoff, interest saved, and true net gain
-export const PlanCards: React.FC<PlanCardsProps> = ({ params, results, appreciationRate, includeCarryingCosts }) => {
-  const snaps = getScenarioSnapshots(results, params, SALE_YEAR, appreciationRate, includeCarryingCosts);
+export const PlanCards: React.FC<PlanCardsProps> = ({ params, results, appreciationRate, closingCostRate, includeCarryingCosts }) => {
+  const snaps = getScenarioSnapshots(results, params, SALE_YEAR, appreciationRate, includeCarryingCosts, closingCostRate);
   const plans = [
     { name: 'Monthly', summary: results.monthly.summary, gain: snaps.monthly.trueNetGain },
     { name: 'Bi-Weekly', summary: results.biWeekly.summary, gain: snaps.biWeekly.trueNetGain },

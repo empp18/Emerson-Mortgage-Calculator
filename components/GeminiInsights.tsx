@@ -16,6 +16,7 @@ interface GeminiInsightsProps {
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
   appreciationRate: number;
+  closingCostRate: number;
   includeCarryingCosts: boolean;
 }
 
@@ -66,18 +67,18 @@ const Bar: React.FC<{ plan: PlanKey; value: number; scale: number }> = ({ plan, 
   );
 };
 
-export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results, isLoading, setIsLoading, appreciationRate, includeCarryingCosts }) => {
+export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results, isLoading, setIsLoading, appreciationRate, closingCostRate, includeCarryingCosts }) => {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
 
   // Live numbers for the bars; the written analysis is only regenerated on request
   const timeline = useMemo(
-    () => (params && results ? getTimelineSnapshots(results, params, appreciationRate, includeCarryingCosts) : null),
-    [params, results, appreciationRate, includeCarryingCosts]
+    () => (params && results ? getTimelineSnapshots(results, params, appreciationRate, includeCarryingCosts, closingCostRate) : null),
+    [params, results, appreciationRate, includeCarryingCosts, closingCostRate]
   );
 
   if (!params || !results || !timeline) return null;
 
-  const currentInputs = JSON.stringify([params, appreciationRate, includeCarryingCosts]);
+  const currentInputs = JSON.stringify([params, appreciationRate, closingCostRate, includeCarryingCosts]);
   const isStale = analysis !== null && analysis.inputs !== currentInputs;
 
   // Bars share one scale: the largest absolute value across all nine numbers fills half the track
@@ -86,7 +87,7 @@ export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results,
   const generate = async () => {
     setIsLoading(true);
     try {
-      const insights = await getMortgageInsights(params, results, appreciationRate, includeCarryingCosts);
+      const insights = await getMortgageInsights(params, results, appreciationRate, includeCarryingCosts, closingCostRate);
       setAnalysis({ insights, inputs: currentInputs, generatedOn: currentMonthYear() });
     } catch (error) {
       console.error('Failed to generate insights:', error);

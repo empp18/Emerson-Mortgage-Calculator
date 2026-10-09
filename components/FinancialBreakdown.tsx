@@ -6,6 +6,7 @@ interface FinancialBreakdownProps {
   params: MortgageParams;
   results: CalculationResults;
   appreciationRate: number;
+  closingCostRate: number;
   includeCarryingCosts: boolean;
 }
 
@@ -23,6 +24,7 @@ interface Row {
   highlight?: string;
   sub?: (year: number, rate: number) => string;
   onlyWhenCarrying?: boolean;
+  closing?: boolean; // label shows the live closing-cost rate
 }
 
 // Each row is a positive amount with an operator in its label, so the column reads like a ledger
@@ -30,7 +32,7 @@ const ROWS: Row[] = [
   { label: 'Est. home value', value: m => m.futureValue, sub: (year, rate) => `after ${year} yrs at ${rate}%` },
   { label: '(-) Remaining balance', value: m => m.remainingBalance, tone: 'cost' },
   { label: '(=) Gross equity', value: m => m.futureValue - m.remainingBalance, tone: 'bold' },
-  { label: '(-) Closing costs (8%)', value: m => m.closingCosts, tone: 'cost' },
+  { label: '(-) Closing costs', value: m => m.closingCosts, tone: 'cost', closing: true },
   { label: '(=) Check at closing', value: m => m.netProceeds, tone: 'bold', highlight: 'bg-brand-primary/10' },
   { label: '(-) Down payment you put in', value: (_m, p) => p.downPayment, tone: 'cost' },
   { label: '(-) Principal you repaid', value: m => m.principalPaidToDate, tone: 'cost' },
@@ -40,12 +42,12 @@ const ROWS: Row[] = [
   { label: '(=) True net gain', value: m => m.trueNetGain, tone: 'total', highlight: 'bg-brand-secondary/20' },
 ];
 
-export const FinancialBreakdown: React.FC<FinancialBreakdownProps> = ({ params, results, appreciationRate, includeCarryingCosts }) => {
+export const FinancialBreakdown: React.FC<FinancialBreakdownProps> = ({ params, results, appreciationRate, closingCostRate, includeCarryingCosts }) => {
   const [activeYear, setActiveYear] = useState(7);
 
   const metrics = useMemo(
-    () => getScenarioSnapshots(results, params, activeYear, appreciationRate, includeCarryingCosts),
-    [params, results, activeYear, appreciationRate, includeCarryingCosts]
+    () => getScenarioSnapshots(results, params, activeYear, appreciationRate, includeCarryingCosts, closingCostRate),
+    [params, results, activeYear, appreciationRate, includeCarryingCosts, closingCostRate]
   );
 
   const scenarios = [
@@ -89,7 +91,7 @@ export const FinancialBreakdown: React.FC<FinancialBreakdownProps> = ({ params, 
               return (
                 <tr key={row.label} className={row.highlight ?? ''}>
                   <td className={`px-4 py-3 ${tone === 'bold' || tone === 'total' ? 'font-semibold text-brand-dark' : 'text-gray-700'}`}>
-                    {row.label}
+                    {row.closing ? `(-) Closing costs (${closingCostRate}%)` : row.label}
                     {row.sub && <span className="block text-xs text-gray-500">{row.sub(activeYear, appreciationRate)}</span>}
                   </td>
                   {scenarios.map(s => {
@@ -108,7 +110,7 @@ export const FinancialBreakdown: React.FC<FinancialBreakdownProps> = ({ params, 
         </table>
       </div>
       <p className="text-xs text-gray-500 mt-3">
-        Assumes {appreciationRate}% annual appreciation and 8% total closing costs (realtor fees + transfer tax). Buyer-side closing costs and maintenance are not included.
+        Assumes {appreciationRate}% annual appreciation and {closingCostRate}% total closing costs (realtor fees + transfer tax). Buyer-side closing costs and maintenance are not included.
       </p>
     </div>
   );

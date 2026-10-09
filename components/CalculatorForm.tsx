@@ -7,6 +7,8 @@ interface CalculatorFormProps {
   onCalculate: (params: MortgageParams) => void;
   appreciationRate: number;
   onAppreciationRateChange: (rate: number) => void;
+  closingCostRate: number;
+  onClosingCostRateChange: (rate: number) => void;
 }
 
 // Results follow the inputs; this waits for a pause in typing before recalculating
@@ -78,7 +80,7 @@ const TextField: React.FC<TextFieldProps> = ({ id, label, value, onChange, prefi
   </div>
 );
 
-export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, appreciationRate, onAppreciationRateChange }) => {
+export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, appreciationRate, onAppreciationRateChange, closingCostRate, onClosingCostRateChange }) => {
   const [homePrice, setHomePrice] = useState('400000');
   const [downPayment, setDownPayment] = useState('100000');
   const [downPaymentPercent, setDownPaymentPercent] = useState('25');
@@ -92,6 +94,7 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, app
   const [extraPayment, setExtraPayment] = useState('200');
   const [extraPaymentFrequency, setExtraPaymentFrequency] = useState<'weekly' | 'bi-weekly' | 'monthly' | 'annually'>('monthly');
   const [appreciationText, setAppreciationText] = useState(String(appreciationRate));
+  const [closingCostText, setClosingCostText] = useState(String(closingCostRate));
 
   // One-time payment
   const [showOneTimePayment, setShowOneTimePayment] = useState(false);
@@ -139,6 +142,11 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, app
   const handleAppreciation = (value: string) => {
     setAppreciationText(value);
     onAppreciationRateChange(num(value));
+  };
+
+  const handleClosingCosts = (value: string) => {
+    setClosingCostText(value);
+    onClosingCostRateChange(num(value));
   };
 
   const handleDateChange = (part: 'year' | 'month', value: string) => {
@@ -288,6 +296,7 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, app
             <TextField id="hoa" label="HOA dues" prefix="$" grouped value={hoaDues} onChange={setHoaDues} description="Per month" />
           </div>
           <TextField id="appreciation" label="Sale appreciation" suffix="%" value={appreciationText} onChange={handleAppreciation} description="Per year, used for the sale figures" />
+          <TextField id="closingCosts" label="Closing costs when you sell" suffix="%" value={closingCostText} onChange={handleClosingCosts} description="Agent fees and transfer taxes, as % of the sale price" />
 
           <div>
             {!showOneTimePayment ? (
