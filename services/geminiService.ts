@@ -9,8 +9,17 @@ export interface SnapshotMetrics {
     totalInterestToDate: number;
     closingCosts: number;
     netProceeds: number;
+    principalPaidToDate: number;
+    carryingCostsToDate: number; // taxes, insurance, HOA and PMI paid so far (0 unless opted in)
     trueGain: number;
     trueNetGain: number;
+}
+
+// Ownership costs beyond the loan itself. Passing this to getSnapshotAtYear opts in to counting them.
+export interface CarryingCosts {
+    propertyTaxes: number;       // annual
+    homeownersInsurance: number; // annual
+    hoaDues: number;             // monthly
 }
 
 // Helper to get data at a specific year
@@ -20,7 +29,8 @@ export function getSnapshotAtYear(
     initialHomePrice: number, 
     downPayment: number,
     isBiWeekly: boolean,
-    appreciationRate: number = 3.5
+    appreciationRate: number = 3.5,
+    carrying?: CarryingCosts
 ): SnapshotMetrics {
     const rateDecimal = appreciationRate / 100;
     const growthFactor = Math.pow(1 + rateDecimal, year);
@@ -28,6 +38,9 @@ export function getSnapshotAtYear(
     // Safety check for empty schedules (e.g. 100% down payment)
     if (!schedule || schedule.length === 0) {
         const futureVal = initialHomePrice * growthFactor;
+        const carryingCostsToDate = carrying
+            ? (carrying.propertyTaxes + carrying.homeownersInsurance + carrying.hoaDues * 12) * year
+            : 0;
         return {
             year,
             futureValue: futureVal,
@@ -35,8 +48,10 @@ export function getSnapshotAtYear(
             totalInterestToDate: 0,
             closingCosts: futureVal * 0.08,
             netProceeds: futureVal * 0.92,
-            trueGain: (futureVal * 0.92) - downPayment,
-            trueNetGain: (futureVal * 0.92) - downPayment
+            principalPaidToDate: 0,
+            carryingCostsToDate,
+            trueGain: (futureVal * 0.92) - initialHomePrice,
+            trueNetGain: (futureVal * 0.92) - initialHomePrice - carryingCostsToDate
         };
     }
 
@@ -67,22 +82,33 @@ export function getSnapshotAtYear(
     // Calculate total interest paid up to this point
     // If paid off early, we sum ALL interest. If not, we sum up to the target entry.
     let totalInterestToDate = 0;
+    let pmiToDate = 0;
     const limitPeriod = paidOffEarly ? lastEntry.month : entry.month;
     
     for(const e of schedule) {
         if (e.month <= limitPeriod) {
             totalInterestToDate += e.interest;
+            // Schedule rows carry PMI inside totalPayment; recover it by subtraction
+            pmiToDate += e.totalPayment - e.principal - e.extraPayment - e.interest;
         } else {
             break;
         }
     }
 
-    // True Gain: Net Proceeds - Initial Investment (Down Payment)
-    const trueGain = netProceeds - downPayment;
+    // Taxes, insurance and HOA are owed for the whole holding period, even if the loan is paid off early
+    const carryingCostsToDate = carrying
+        ? (carrying.propertyTaxes + carrying.homeownersInsurance + carrying.hoaDues * 12) * year + pmiToDate
+        : 0;
 
-    // True Net Gain: The real profit/loss after accounting for the cost of borrowing
-    // (Net Proceeds - Total Interest Paid - Down Payment)
-    const trueNetGain = netProceeds - totalInterestToDate - downPayment;
+    // Principal is cash out of the owner's pocket that the sale only hands back, so it is not gain.
+    const principalPaidToDate = (initialHomePrice - downPayment) - remainingBalance;
+
+    // True Gain: cash received minus every dollar put in toward the home (down payment + principal paid).
+    // Equivalent to (sale price - closing costs) - original price.
+    const trueGain = netProceeds - downPayment - principalPaidToDate;
+
+    // True Net Gain: True Gain after the cost of borrowing (interest) and, if opted in, carrying costs.
+    const trueNetGain = trueGain - totalInterestToDate - carryingCostsToDate;
 
     return {
         year,
@@ -91,12 +117,32 @@ export function getSnapshotAtYear(
         totalInterestToDate,
         closingCosts,
         netProceeds,
+        principalPaidToDate,
+        carryingCostsToDate,
         trueGain,
         trueNetGain
     };
 }
 
-export async function getMortgageInsights(params: MortgageParams, results: CalculationResults, appreciationRate: number): Promise<string> {
+// The three payment plans compared throughout the app, at one holding period
+export function getScenarioSnapshots(
+    results: CalculationResults,
+    params: MortgageParams,
+    year: number,
+    appreciationRate: number,
+    includeCarryingCosts: boolean
+) {
+    const carrying = includeCarryingCosts
+        ? { propertyTaxes: params.propertyTaxes, homeownersInsurance: params.homeownersInsurance, hoaDues: params.hoaDues }
+        : undefined;
+    return {
+        monthly: getSnapshotAtYear(results.monthly.schedule, year, params.homePrice, params.downPayment, false, appreciationRate, carrying),
+        biWeekly: getSnapshotAtYear(results.biWeekly.schedule, year, params.homePrice, params.downPayment, true, appreciationRate, carrying),
+        biWeeklyExtra: getSnapshotAtYear(results.biWeeklyWithExtra.schedule, year, params.homePrice, params.downPayment, true, appreciationRate, carrying),
+    };
+}
+
+export async function getMortgageInsights(params: MortgageParams, results: CalculationResults, appreciationRate: number, includeCarryingCosts: boolean = false): Promise<string> {
   if (!process.env.API_KEY) {
     console.error("API_KEY environment variable not set.");
     return JSON.stringify([
@@ -109,14 +155,10 @@ export async function getMortgageInsights(params: MortgageParams, results: Calcu
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const timelines = [7, 13, 20];
-  const snapshots = timelines.map(year => {
-      return {
-          year,
-          monthly: getSnapshotAtYear(results.monthly.schedule, year, params.homePrice, params.downPayment, false, appreciationRate),
-          biWeekly: getSnapshotAtYear(results.biWeekly.schedule, year, params.homePrice, params.downPayment, true, appreciationRate),
-          biWeeklyExtra: getSnapshotAtYear(results.biWeeklyWithExtra.schedule, year, params.homePrice, params.downPayment, true, appreciationRate)
-      };
-  });
+  const snapshots = timelines.map(year => ({
+      year,
+      ...getScenarioSnapshots(results, params, year, appreciationRate, includeCarryingCosts)
+  }));
 
   const prompt = `
     You are an expert real estate financial analyst. Analyze the following mortgage scenarios to provide high-level strategic advice.
@@ -127,8 +169,8 @@ export async function getMortgageInsights(params: MortgageParams, results: Calcu
     Therefore, you must calculate not only equity and net sale proceeds, but also total interest paid. You must then evaluate the "True Gain" and "True Net Gain":
     
     - **Net Proceeds**: Sale Price - Closing Costs (8%) - Remaining Mortgage Balance.
-    - **True Gain**: Net Proceeds - Original Down Payment.
-    - **True Net Gain**: Net Proceeds - Total Interest Paid - Original Down Payment.
+    - **True Gain**: Net Proceeds - Original Down Payment - Principal Paid. (Principal paid came out of the homeowner's pocket, so getting it back at closing is not a gain. This equals Sale Price - Closing Costs - Original Purchase Price.)
+    - **True Net Gain**: True Gain - Total Interest Paid${includeCarryingCosts ? ' - Carrying Costs (property taxes, insurance, HOA and PMI paid)' : ''}.
     
     This allows you to accurately determine whether the homeowner truly profited or incurred a loss, even in cases where the sale appears profitable on the surface.
     

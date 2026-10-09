@@ -6,7 +6,7 @@ import { CalculatorForm } from './components/CalculatorForm';
 import { GeminiInsights } from './components/GeminiInsights';
 import { InfoTooltip } from './components/ui/InfoTooltip';
 import { calculateAllScenarios } from './services/mortgageCalculator';
-import { getSnapshotAtYear } from './services/geminiService';
+import { getScenarioSnapshots } from './services/geminiService';
 import type { MortgageParams, CalculationResults, AmortizationEntry } from './types';
 
 const formatCurrency = (value: number | null | undefined): string => {
@@ -560,6 +560,7 @@ export default function App() {
   const [results, setResults] = useState<CalculationResults | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [appreciationRate, setAppreciationRate] = useState(3.5);
+  const [includeCarryingCosts, setIncludeCarryingCosts] = useState(false);
   
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -657,7 +658,7 @@ export default function App() {
       if (i === 1) {
         doc.setFontSize(8);
         doc.text(
-          `Estimates only. Assumes ${appreciationRate}% appreciation & 8% closing costs.`,
+          `Estimates only. Assumes ${appreciationRate}% appreciation & 8% closing costs${includeCarryingCosts ? '; includes taxes, insurance, HOA & PMI' : ''}.`,
           margin,
           footerY + 12
         );
@@ -904,9 +905,7 @@ export default function App() {
     doc.text(`Timeline: ${year} Years`, margin, y);
     y += 14;
 
-    const mSnap = getSnapshotAtYear(results.monthly.schedule, year, params.homePrice, params.downPayment, false, appreciationRate);
-    const bSnap = getSnapshotAtYear(results.biWeekly.schedule, year, params.homePrice, params.downPayment, true, appreciationRate);
-    const eSnap = getSnapshotAtYear(results.biWeeklyWithExtra.schedule, year, params.homePrice, params.downPayment, true, appreciationRate);
+    const { monthly: mSnap, biWeekly: bSnap, biWeeklyExtra: eSnap } = getScenarioSnapshots(results, params, year, appreciationRate, includeCarryingCosts);
 
     const fmt = (n: number) => formatCurrency(Math.round(n));
 
@@ -914,7 +913,12 @@ export default function App() {
       ['Est. Home Value', fmt(mSnap.futureValue), fmt(bSnap.futureValue), fmt(eSnap.futureValue)],
       ['Remaining Balance', fmt(mSnap.remainingBalance), fmt(bSnap.remainingBalance), fmt(eSnap.remainingBalance)],
       ['Net Proceeds (Closing)', fmt(mSnap.netProceeds), fmt(bSnap.netProceeds), fmt(eSnap.netProceeds)],
+      ['Principal Paid', fmt(mSnap.principalPaidToDate), fmt(bSnap.principalPaidToDate), fmt(eSnap.principalPaidToDate)],
+      ['TRUE GAIN', fmt(mSnap.trueGain), fmt(bSnap.trueGain), fmt(eSnap.trueGain)],
       ['Total Interest Paid', fmt(mSnap.totalInterestToDate), fmt(bSnap.totalInterestToDate), fmt(eSnap.totalInterestToDate)],
+      ...(includeCarryingCosts
+        ? [['Taxes, Ins., HOA & PMI', fmt(mSnap.carryingCostsToDate), fmt(bSnap.carryingCostsToDate), fmt(eSnap.carryingCostsToDate)]]
+        : []),
       ['TRUE NET GAIN', fmt(mSnap.trueNetGain), fmt(bSnap.trueNetGain), fmt(eSnap.trueNetGain)],
     ];
 
@@ -930,7 +934,7 @@ export default function App() {
         3: { halign: 'right' },
       },
       willDrawCell: data => {
-        if (data.row.index === 4 && data.section === 'body') {
+        if (data.row.index === snapshotBody.length - 1 && data.section === 'body') {
           data.cell.styles.fontStyle = 'bold';
           data.cell.styles.textColor = brandDark;
         }
@@ -1084,7 +1088,7 @@ export default function App() {
           )}
 
           <div className="no-print">
-            <GeminiInsights params={params} results={results} isLoading={isLoading} setIsLoading={setIsLoading} appreciationRate={appreciationRate} />
+            <GeminiInsights params={params} results={results} isLoading={isLoading} setIsLoading={setIsLoading} appreciationRate={appreciationRate} includeCarryingCosts={includeCarryingCosts} setIncludeCarryingCosts={setIncludeCarryingCosts} />
           </div>
         </div>
       </main>

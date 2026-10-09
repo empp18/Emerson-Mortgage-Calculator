@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { getMortgageInsights, getSnapshotAtYear } from '../services/geminiService';
+import { getMortgageInsights, getScenarioSnapshots } from '../services/geminiService';
 import type { MortgageParams, CalculationResults } from '../types';
 
 interface GeminiInsightsProps {
@@ -9,6 +9,8 @@ interface GeminiInsightsProps {
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
   appreciationRate: number;
+  includeCarryingCosts: boolean;
+  setIncludeCarryingCosts: (include: boolean) => void;
 }
 
 interface Insight {
@@ -17,9 +19,9 @@ interface Insight {
 }
 
 const DEFINITIONS: Record<string, string> = {
-  "True Net Gain": "The most critical metric. It is Net Proceeds minus your Down Payment AND Total Interest Paid. This reveals if you truly profited after accounting for the cost of borrowing (interest).",
+  "True Net Gain": "The most critical metric. It is True Gain minus Total Interest Paid (and taxes, insurance, HOA and PMI, if included). This reveals if you truly profited after accounting for the cost of owning the home.",
   "True Net Loss": "When your True Net Gain is negative. This means the total cost of borrowing (interest) plus closing costs exceeded the home's appreciation, resulting in an overall financial loss compared to your initial investment.",
-  "True Gain": "Your Net Proceeds minus your original Down Payment. This shows your cash return, but unlike True Net Gain, it ignores the sunk cost of interest payments.",
+  "True Gain": "Your Net Proceeds minus your Down Payment and the Principal you paid down. Principal is your own money coming back at closing, so it is not profit. This equals the sale price minus closing costs minus what you originally paid for the home.",
   "Net Proceeds": "The estimated amount you receive at closing after paying off the mortgage balance and closing costs (approx. 8%).",
   "Total Interest Cost": "Money paid to the bank for the loan. This is a pure expense that reduces your actual profit from the home.",
   "Total Interest": "Money paid to the bank for the loan. This is a pure expense that reduces your actual profit from the home.",
@@ -69,17 +71,14 @@ const InsightCard: React.FC<{ insight: Insight }> = ({ insight }) => (
     </div>
 );
 
-const FinancialBreakdown: React.FC<{ params: MortgageParams, results: CalculationResults, appreciationRate: number }> = ({ params, results, appreciationRate }) => {
+const FinancialBreakdown: React.FC<{ params: MortgageParams, results: CalculationResults, appreciationRate: number, includeCarryingCosts: boolean, setIncludeCarryingCosts: (include: boolean) => void }> = ({ params, results, appreciationRate, includeCarryingCosts, setIncludeCarryingCosts }) => {
     const [activeYear, setActiveYear] = useState(7);
     const timelines = [7, 13, 20];
 
-    const metrics = useMemo(() => {
-        return {
-            monthly: getSnapshotAtYear(results.monthly.schedule, activeYear, params.homePrice, params.downPayment, false, appreciationRate),
-            biWeekly: getSnapshotAtYear(results.biWeekly.schedule, activeYear, params.homePrice, params.downPayment, true, appreciationRate),
-            biWeeklyExtra: getSnapshotAtYear(results.biWeeklyWithExtra.schedule, activeYear, params.homePrice, params.downPayment, true, appreciationRate)
-        };
-    }, [params, results, activeYear, appreciationRate]);
+    const metrics = useMemo(
+        () => getScenarioSnapshots(results, params, activeYear, appreciationRate, includeCarryingCosts),
+        [params, results, activeYear, appreciationRate, includeCarryingCosts]
+    );
 
     const formatMoney = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 
@@ -90,15 +89,29 @@ const FinancialBreakdown: React.FC<{ params: MortgageParams, results: Calculatio
           getValue: (m: any) => m.futureValue - m.remainingBalance, isCurrency: true, bold: true },
         { label: '(-) Est. Closing Costs (8%)', key: 'closingCosts', isCurrency: true, textRed: true },
         { label: '(=) Net Proceeds (Check at Closing)', key: 'netProceeds', isCurrency: true, bold: true, bg: 'bg-brand-primary/10' },
-        { label: '(-) Total Interest Paid', key: 'totalInterestToDate', isCurrency: true, textRed: true },
         { label: '(-) Original Down Payment', key: 'downPayment', isCalculated: true, getValue: () => params.downPayment, isCurrency: true, textRed: true },
+        { label: '(-) Principal Paid Down (your own money)', key: 'principalPaidToDate', isCurrency: true, textRed: true },
+        { label: '(=) TRUE GAIN', key: 'trueGain', isCurrency: true, bold: true },
+        { label: '(-) Total Interest Paid', key: 'totalInterestToDate', isCurrency: true, textRed: true },
+        ...(includeCarryingCosts ? [{ label: '(-) Taxes, Insurance, HOA & PMI', key: 'carryingCostsToDate', isCurrency: true, textRed: true }] : []),
         { label: '(=) TRUE NET GAIN', key: 'trueNetGain', isCurrency: true, bold: true, bg: 'bg-brand-secondary/20', textBrand: true },
     ];
 
     return (
         <div className="mt-8 border-t border-white/20 pt-6">
              <div className="flex justify-between items-center mb-4">
-                <h4 className="text-xl font-bold text-white">The Math: Financial Breakdown</h4>
+                <div>
+                    <h4 className="text-xl font-bold text-white">The Math: Financial Breakdown</h4>
+                    <label className="flex items-center gap-2 mt-2 text-sm text-gray-300 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={includeCarryingCosts}
+                            onChange={(e) => setIncludeCarryingCosts(e.target.checked)}
+                            className="accent-brand-secondary"
+                        />
+                        Include property taxes, insurance, HOA &amp; PMI
+                    </label>
+                </div>
                 <div className="flex bg-brand-dark rounded-lg p-1 border border-white/20">
                     {timelines.map(year => (
                         <button
@@ -148,12 +161,12 @@ const FinancialBreakdown: React.FC<{ params: MortgageParams, results: Calculatio
                     </tbody>
                 </table>
             </div>
-            <p className="text-xs text-gray-400 mt-2 italic">*Calculations assume {appreciationRate}% annual appreciation and 8% total closing costs (realtor fees + transfer tax).</p>
+            <p className="text-xs text-gray-400 mt-2 italic">*Calculations assume {appreciationRate}% annual appreciation and 8% total closing costs (realtor fees + transfer tax). Buyer-side closing costs and maintenance are not included.</p>
         </div>
     );
 };
 
-export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results, isLoading, setIsLoading, appreciationRate }) => {
+export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results, isLoading, setIsLoading, appreciationRate, includeCarryingCosts, setIncludeCarryingCosts }) => {
   const [insights, setInsights] = useState<Insight[]>([]);
 
   useEffect(() => {
@@ -161,7 +174,7 @@ export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results,
       const fetchInsights = async () => {
         setIsLoading(true);
         try {
-          const insightsString = await getMortgageInsights(params, results, appreciationRate);
+          const insightsString = await getMortgageInsights(params, results, appreciationRate, includeCarryingCosts);
           setInsights(JSON.parse(insightsString));
         } catch (error) {
           console.error("Failed to parse Gemini insights:", error);
@@ -178,7 +191,7 @@ export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results,
       fetchInsights();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params, results, appreciationRate]); // Re-run when rate changes
+  }, [params, results, appreciationRate, includeCarryingCosts]); // Re-run when rate or cost basis changes
 
   if (!params || !results) return null;
 
@@ -203,7 +216,7 @@ export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results,
                 {insights.map((insight, index) => <InsightCard key={index} insight={insight} />)}
             </div>
             
-            <FinancialBreakdown params={params} results={results} appreciationRate={appreciationRate} />
+            <FinancialBreakdown params={params} results={results} appreciationRate={appreciationRate} includeCarryingCosts={includeCarryingCosts} setIncludeCarryingCosts={setIncludeCarryingCosts} />
         </>
       )}
     </div>
