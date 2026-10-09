@@ -1,0 +1,69 @@
+<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>PDF report mockup</title>
+<link href='https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&display=swap' rel='stylesheet'>
+<style>
+body{margin:0;background:#D9D6D0;font-family:Inter,Helvetica,sans-serif;color:#14213D}
+.intro{max-width:816px;margin:0 auto;padding:28px 16px 0}.intro h1{font-family:Fraunces,Georgia,serif;font-size:26px;margin:0 0 6px}.intro p{margin:0;color:#444;font-size:14px;line-height:1.5}
+.page{width:816px;height:1056px;margin:24px auto;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15);padding:44px 52px;box-sizing:border-box;position:relative;font-size:12px}
+.hd{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #002D4E;padding-bottom:10px}
+.pill{border:1px solid #E3E6EC;background:#FBFAF7;border-radius:999px;padding:3px 10px;font-size:10.5px;font-weight:600;color:#002D4E}
+.brand{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:14px}.dt{font-size:10.5px;color:#5B6577}
+h2{font-family:Fraunces,Georgia,serif;font-size:16px;margin:0 0 2px}.sub{color:#5B6577;font-size:10.5px;margin:0 0 8px}
+.title{font-family:Fraunces,Georgia,serif;font-size:24px;margin:22px 0 2px}.scn{color:#5B6577;font-size:11px}
+.lede{font-family:Fraunces,Georgia,serif;font-size:19px;line-height:1.3;font-weight:600;margin:16px 0 18px;padding:14px 16px;background:#FBFAF7;border-left:3px solid #F2A900}
+.cols{display:grid;grid-template-columns:1.25fr 1fr;gap:20px}
+.box{border:1px solid #E3E6EC;border-radius:10px;padding:12px 14px}
+.st{display:grid;grid-template-columns:20px 1fr auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #EEF0F3}.st:last-child{border:0}
+.d{width:20px;height:20px;border-radius:50%;background:#EAF2F9;color:#005A9C;font-size:10px;font-weight:700;display:grid;place-items:center}.fin .d{background:#002D4E;color:#fff}
+.st b,.row b{font-variant-numeric:tabular-nums}.n{color:#B42318}.p{color:#1E7B4F}
+.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #EEF0F3}.row.t{font-weight:700;border-top:1.5px solid #14213D;border-bottom:0;margin-top:2px}
+table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;color:#5B6577;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;padding:6px;border-bottom:1.5px solid #14213D}th:first-child,td:first-child{text-align:left}td{padding:7px 6px;text-align:right;border-bottom:1px solid #EEF0F3;font-variant-numeric:tabular-nums}
+.badge{background:#F2A900;border-radius:999px;padding:1px 7px;font-size:9.5px;font-weight:700;margin-left:6px}
+.sec{margin-top:18px}
+.ax{font-size:10px;fill:#5B6577}.ax.b{fill:#14213D;font-weight:600}
+.lg{display:flex;gap:14px;font-size:10.5px;color:#5B6577;margin-top:4px}.lg i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:5px}
+.tl{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.pt{border:1px solid #E3E6EC;border-radius:10px;padding:10px 12px}
+.pt h4{margin:0;font-size:12px;display:flex;align-items:center;gap:6px}.pt .q{color:#5B6577;font-size:10.5px;margin:2px 0 6px}.dt2{width:16px;height:16px;border-radius:50%}
+.br{display:grid;grid-template-columns:52px 1fr 44px;gap:5px;align-items:center;font-size:10px;margin:4px 0}.tr{position:relative;height:7px;background:#F1F3F6;border-radius:9px;overflow:hidden}.tr i{position:absolute;top:0;bottom:0;border-radius:9px}.z{position:absolute;left:50%;top:0;bottom:0;width:1px;background:#9AA3B2}.br b{text-align:right}
+.bl{margin-top:14px;padding:12px 14px;background:#FBFAF7;border-radius:10px}.bl small{font-size:9.5px;font-weight:700;letter-spacing:.1em;color:#5B6577}.bl p{font-family:Fraunces,Georgia,serif;font-size:15px;font-weight:600;margin:4px 0 0;line-height:1.35}.bl em{font-style:normal;color:#1E7B4F}
+.asm{font-size:10.5px;color:#2b3550;line-height:1.5;columns:2;column-gap:22px}.asm p{margin:0 0 6px;break-inside:avoid}
+.ft{position:absolute;left:52px;right:52px;bottom:30px;border-top:1px solid #E3E6EC;padding-top:8px;font-size:9.5px;color:#8B93A1}.ft div{display:flex;justify-content:space-between}.ft small{display:block;margin-top:3px}
+
+.page{padding:36px 46px}.title{font-size:21px;margin:10px 0 2px}.lede{font-size:17px;margin:10px 0 8px;padding:10px 14px}
+.pay{font-size:11px;color:#2b3550;margin:0 0 12px}.pay b{color:#14213D}
+.cols{grid-template-columns:1fr 1.2fr;gap:14px}.box{padding:10px 12px}.st{padding:4px 0}
+table{font-size:10.5px}td{padding:5px 4px}th{padding:4px}
+.sec{margin-top:9px}.pt{padding:8px 10px}.bl{margin-top:10px;padding:8px 12px}.bl p{font-size:14px}.tl{gap:10px}td,th{white-space:nowrap}.badge{font-size:9px;padding:1px 6px}.cols{grid-template-columns:.9fr 1.3fr}.st{font-size:11.5px}.lede{font-size:16px}.ft small{font-size:9px;line-height:1.4}
+</style></head><body>
+<div class='intro'><h1>PDF report: one-page version</h1><p>Everything a client needs on a single letter-size page. The math table and the year-by-year schedule are dropped, and the assumptions move into the footer.</p></div>
+<div class='page'>
+<div class='hd'><span class='pill'>Presented by Emerson Pinto</span><span class='brand'>Mortgage Calculator</span><span class='dt'>Prepared Oct 9, 2026</span></div>
+<div class='title'>Your mortgage, in plain numbers</div>
+<div class='scn'>$400,000 home · $100,000 down (25%) · 6.5% · 30 years · $200/mo extra on Bi-Weekly v2.0</div>
+<div class='lede'>If you sold in seven years, you would get $207,128 at closing. After interest, you would still be $52,153 behind.</div>
+<div class='pay'>Monthly payment <b>$2,471</b> = principal &amp; interest $1,896 + property taxes $450 + insurance $125</div>
+<div class='cols'>
+ <div class='box'><h2>Where the check goes</h2><p class='sub'>Monthly plan, sold after 7 years</p>
+  <div class='st'><span class='d'>1</span><span>Check at closing</span><b>$207,128</b></div>
+  <div class='st'><span class='d'>2</span><span>Less the down payment</span><b class='n'>−$100,000</b></div>
+  <div class='st'><span class='d'>3</span><span>Less the principal you repaid</span><b class='n'>−$28,751</b></div>
+  <div class='st'><span class='d'>4</span><span>Less the interest you paid</span><b class='n'>−$130,530</b></div>
+  <div class='st fin'><span class='d'>=</span><span><b>What you actually gained</b></span><b class='n'>−$52,153</b></div>
+ </div>
+ <div class='box'><h2>Your three plans</h2><p class='sub'>True net gain at a 7-year sale</p>
+  <table><thead><tr><th>Plan</th><th>Per month</th><th>Payoff</th><th>Saved</th><th>Net gain</th></tr></thead><tbody>
+  <tr><td><b>Monthly</b></td><td>$2,471</td><td>Oct 2056</td><td>—</td><td class='n'>−$52,153</td></tr>
+  <tr><td><b>Bi-Weekly</b><div><span class='badge' style='margin:0'>5 yr 10 mo sooner</span></div></td><td>$2,629</td><td>Nov 2050</td><td>$88,122</td><td class='n'>−$48,592</td></tr>
+  <tr><td><b>Bi-Weekly v2.0</b><div><span class='badge' style='margin:0'>10 yr 3 mo sooner</span></div></td><td>$2,829</td><td>May 2046</td><td>$150,913</td><td class='n'>−$44,151</td></tr>
+  </tbody></table>
+ </div>
+</div>
+<div class='sec'><h2>How your outcome changes over time</h2><p class='sub'>True net gain by plan if you sold at each point. Bars run left for a loss, right for a gain.</p>
+<div class='tl'><div class='pt'><h4><span class='dt2' style='background:#B42318'></span>Sell at 7 years</h4><div class='q'>All plans lose money</div><div class='br'><span>Monthly</span><div class='tr'><span class='z'></span><i style='right:50%;width:22%;background:#005A9C'></i></div><b class='n'>−$52k</b></div><div class='br'><span>Bi-Weekly</span><div class='tr'><span class='z'></span><i style='right:50%;width:21%;background:#1E7B4F'></i></div><b class='n'>−$49k</b></div><div class='br'><span>v2.0</span><div class='tr'><span class='z'></span><i style='right:50%;width:19%;background:#A67700'></i></div><b class='n'>−$44k</b></div></div><div class='pt'><h4><span class='dt2' style='background:#A67700'></span>Sell at 13 years</h4><div class='q'>The plans pull apart</div><div class='br'><span>Monthly</span><div class='tr'><span class='z'></span><i style='right:50%;width:18%;background:#005A9C'></i></div><b class='n'>−$42k</b></div><div class='br'><span>Bi-Weekly</span><div class='tr'><span class='z'></span><i style='right:50%;width:12%;background:#1E7B4F'></i></div><b class='n'>−$27k</b></div><div class='br'><span>v2.0</span><div class='tr'><span class='z'></span><i style='right:50%;width:4%;background:#A67700'></i></div><b class='n'>−$10k</b></div></div><div class='pt'><h4><span class='dt2' style='background:#1E7B4F'></span>Sell at 20 years</h4><div class='q'>All plans gain</div><div class='br'><span>Monthly</span><div class='tr'><span class='z'></span><i style='left:50%;width:11%;background:#005A9C'></i></div><b class='p'>+$26k</b></div><div class='br'><span>Bi-Weekly</span><div class='tr'><span class='z'></span><i style='left:50%;width:28%;background:#1E7B4F'></i></div><b class='p'>+$66k</b></div><div class='br'><span>v2.0</span><div class='tr'><span class='z'></span><i style='left:50%;width:50%;background:#A67700'></i></div><b class='p'>+$116k</b></div></div></div>
+<div class='bl'><small>THE BOTTOM LINE</small><p>This home pays off only if you stay about 20 years, and <em>Bi-Weekly v2.0 makes that payoff more than four times bigger.</em></p></div>
+</div>
+<div class='sec'><h2>Your loan balance</h2>
+<svg viewBox='0 0 680 230' width='100%' style='display:block;height:auto'><line x1='56' x2='660' y1='196.0' y2='196.0' stroke='#E3E6EC'/><text x='50' y='200.0' text-anchor='end' class='ax'>$0</text><line x1='56' x2='660' y1='135.3' y2='135.3' stroke='#E3E6EC'/><text x='50' y='139.3' text-anchor='end' class='ax'>$100k</text><line x1='56' x2='660' y1='74.7' y2='74.7' stroke='#E3E6EC'/><text x='50' y='78.7' text-anchor='end' class='ax'>$200k</text><line x1='56' x2='660' y1='14.0' y2='14.0' stroke='#E3E6EC'/><text x='50' y='18.0' text-anchor='end' class='ax'>$300k</text><text x='56.0' y='212' text-anchor='middle' class='ax'>0</text><text x='156.7' y='212' text-anchor='middle' class='ax'>5</text><text x='257.3' y='212' text-anchor='middle' class='ax'>10</text><text x='358.0' y='212' text-anchor='middle' class='ax'>15</text><text x='458.7' y='212' text-anchor='middle' class='ax'>20</text><text x='559.3' y='212' text-anchor='middle' class='ax'>25</text><text x='660.0' y='212' text-anchor='middle' class='ax'>30</text><polyline points='56.0,14.0 76.1,16.0 96.3,18.2 116.4,20.5 136.5,23.0 156.7,25.6 176.8,28.4 196.9,31.4 217.1,34.6 237.2,38.1 257.3,41.7 277.5,45.6 297.6,49.7 317.7,54.2 337.9,58.9 358.0,63.9 378.1,69.3 398.3,75.1 418.4,81.2 438.5,87.7 458.7,94.7 478.8,102.1 498.9,110.1 519.1,118.5 539.2,127.6 559.3,137.2 579.5,147.5 599.6,158.5 619.7,170.2 639.9,182.7 660.0,196.0' fill='none' stroke='#005A9C' stroke-width='2.2'/><polyline points='56.0,14.0 76.1,17.2 96.3,20.7 116.4,24.3 136.5,28.3 156.7,32.4 176.8,36.9 196.9,41.7 217.1,46.7 237.2,52.2 257.3,57.9 277.5,64.1 297.6,70.7 317.7,77.7 337.9,85.2 358.0,93.2 378.1,101.8 398.3,110.9 418.4,120.6 438.5,131.0 458.7,142.0 478.8,153.8 498.9,166.5 519.1,179.9 539.2,194.3 559.3,196.0' fill='none' stroke='#1E7B4F' stroke-width='2.2'/><polyline points='56.0,14.0 76.1,18.7 96.3,23.8 116.4,29.2 136.5,34.9 156.7,41.0 176.8,47.6 196.9,54.5 217.1,62.0 237.2,69.9 257.3,78.4 277.5,87.5 297.6,97.1 317.7,107.4 337.9,118.4 358.0,130.1 378.1,142.7 398.3,156.0 418.4,170.3 438.5,185.5 458.7,196.0' fill='none' stroke='#A67700' stroke-width='2.2'/><line x1='196.9' x2='196.9' y1='14' y2='196' stroke='#14213D' stroke-dasharray='3 3' opacity='.6'/><text x='201.9' y='24' class='ax b'>Sale at year 7</text></svg>
+<div class='lg'><span><i style='background:#005A9C'></i>Monthly</span><span><i style='background:#1E7B4F'></i>Bi-Weekly</span><span><i style='background:#A67700'></i>Bi-Weekly v2.0</span></div>
+</div>
+<div class='ft'><div><span>Emerson Pinto | (609) 286-7269 | emerson.pinto@kw.com</span><span>Page 1 of 1</span></div><small>Estimates only. Assumes 3.5% appreciation and 6% closing costs when you sell. Bi-weekly means half the monthly payment every 14 days; the $200/mo extra is spread across bi-weekly payments. True net gain is the check at closing less the down payment, principal repaid and interest. Excludes buying costs, maintenance and taxes.</small></div>
+</div></body></html>
