@@ -1036,14 +1036,14 @@ export default function App() {
                 <PlanCards params={params} results={results} appreciationRate={appreciationRate} includeCarryingCosts={includeCarryingCosts} />
                 <BalanceChartCard params={params} results={results} />
 
-                <details className="group bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-brand-light">
+                <details className="group rounded-2xl border border-brand-line bg-white p-6 md:p-8">
                   <summary className="cursor-pointer font-serif text-xl font-semibold text-brand-dark">Show the math</summary>
                   <div className="mt-6">
                     <FinancialBreakdown params={params} results={results} appreciationRate={appreciationRate} includeCarryingCosts={includeCarryingCosts} />
                   </div>
                 </details>
 
-                <details className="group bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-brand-light">
+                <details className="group rounded-2xl border border-brand-line bg-white p-6 md:p-8">
                   <summary className="cursor-pointer font-serif text-xl font-semibold text-brand-dark">Payment details, comparison and schedule</summary>
                   <div className="mt-6 space-y-8">
                     <PaymentBreakdown results={results} />

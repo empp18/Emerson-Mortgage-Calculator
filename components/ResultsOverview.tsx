@@ -132,21 +132,26 @@ interface BalanceChartCardProps {
 
 // Remaining loan balance at the end of each year, for each plan
 export const BalanceChartCard: React.FC<BalanceChartCardProps> = ({ params, results }) => {
-  const balanceAt = (schedule: AmortizationEntry[], periodsPerYear: number, year: number) => {
-    if (year === 0) return results.monthly.summary.totalPrincipal ?? 0;
+  const principal = results.monthly.summary.totalPrincipal ?? 0;
+
+  // Balance at the end of a year. Null once the loan is gone, so the line stops at payoff.
+  const balanceAt = (schedule: AmortizationEntry[], periodsPerYear: number, year: number): number | null => {
+    if (year === 0) return principal;
+    const lastMonth = schedule.length ? schedule[schedule.length - 1].month : 0;
+    const payoffYear = Math.ceil(lastMonth / periodsPerYear);
+    if (year > payoffYear) return null;
     const row = schedule.find(e => e.month >= year * periodsPerYear);
-    return row ? row.remainingBalance : 0;
+    return row ? Math.round(row.remainingBalance) : 0;
   };
 
   const data = Array.from({ length: params.loanTerm + 1 }, (_, year) => ({
     year,
-    monthly: Math.round(balanceAt(results.monthly.schedule, 12, year)),
-    biWeekly: Math.round(balanceAt(results.biWeekly.schedule, 26, year)),
-    biWeeklyExtra: Math.round(balanceAt(results.biWeeklyWithExtra.schedule, 26, year)),
+    monthly: balanceAt(results.monthly.schedule, 12, year),
+    biWeekly: balanceAt(results.biWeekly.schedule, 26, year),
+    biWeeklyExtra: balanceAt(results.biWeeklyWithExtra.schedule, 26, year),
   }));
   const ticks = Array.from({ length: Math.floor(params.loanTerm / 5) + 1 }, (_, i) => i * 5);
   // Balance axis in round steps up to the loan amount
-  const principal = results.monthly.summary.totalPrincipal ?? 0;
   const step = principal > 500000 ? 200000 : 100000;
   const balanceTicks = Array.from({ length: Math.floor(principal / step) + 1 }, (_, i) => i * step);
 

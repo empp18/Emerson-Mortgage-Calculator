@@ -196,10 +196,13 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, app
   const annualExtra = annualExtraPaymentFor({ extraPayment: num(extraPayment), extraPaymentFrequency });
   const downPercent = num(downPaymentPercent);
   const needsPmi = num(homePrice) > 0 && (num(homePrice) - num(downPayment)) / num(homePrice) > 0.8;
+  const shortMoney = (value: number) => (value >= 1000 ? `$${Math.round(value / 1000)}k` : `$${Math.round(value)}`);
+  const scenarioSummary = `${shortMoney(num(homePrice))} · ${Number(downPercent.toFixed(1))}% down · ${num(interestRate)}% · ${loanTerm} yr`;
 
   return (
     <div className="rounded-[18px] border border-brand-line bg-white p-[22px]">
       <h2 className="font-serif text-[20px] font-semibold text-brand-ink">Your scenario</h2>
+      <p className="mt-1 text-[12.5px] text-brand-muted">{scenarioSummary}</p>
       <p className="mb-5 mt-1 text-[13px] text-brand-muted">Change any number. Results update as you go.</p>
 
       <div className="space-y-4">
@@ -258,16 +261,16 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, app
 
         <div>
           <TextField id="extraPayment" label="Extra payment" prefix="$" grouped value={extraPayment} onChange={setExtraPayment} />
-          <label htmlFor="extraFrequency" className={`${labelClass} mt-4`}>How often</label>
+          <label htmlFor="extraFrequency" className={`${labelClass} mt-4`}>
+            How often
+            <InfoTooltip text={`Applied to the Bi-Weekly v2.0 plan${annualExtra > 0 ? ` · about ${currency(annualExtra)} a year` : ''}.`} />
+          </label>
           <select id="extraFrequency" value={extraPaymentFrequency} onChange={(e) => setExtraPaymentFrequency(e.target.value as any)} className={selectClass}>
             <option value="weekly">Every week</option>
             <option value="bi-weekly">Every two weeks</option>
             <option value="monthly">Every month</option>
             <option value="annually">Once a year</option>
           </select>
-          <p className="mt-1.5 text-[12px] text-brand-muted">
-            Applied to the Bi-Weekly v2.0 plan{annualExtra > 0 ? ` · about ${currency(annualExtra)} a year` : ''}.
-          </p>
         </div>
       </div>
 
