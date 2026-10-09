@@ -2,6 +2,18 @@ import type { MortgageParams, AmortizationEntry, MortgageSummary, CalculationRes
 
 const PMI_LTV_CUTOFF = 0.8; // LTV ratio at which PMI is removed
 
+// Adds whole months, clamping to the last day of the target month
+// (Jan 31 + 1 month = Feb 28, not Mar 3).
+function addMonths(base: Date, months: number): Date {
+  const targetMonth = base.getMonth() + months;
+  const lastDayOfTargetMonth = new Date(base.getFullYear(), targetMonth + 1, 0).getDate();
+  return new Date(base.getFullYear(), targetMonth, Math.min(base.getDate(), lastDayOfTargetMonth));
+}
+
+function addDays(base: Date, days: number): Date {
+  return new Date(base.getFullYear(), base.getMonth(), base.getDate() + days);
+}
+
 function calculatePAndI(principal: number, annualRate: number, years: number): number {
   if (principal <= 0) return 0;
   const monthlyRate = annualRate / 100 / 12;
@@ -21,7 +33,8 @@ function generateAmortizationSchedule(
     homePrice: number,
     monthlyPmiAmount: number,
     oneTimePayment: number = 0,
-    oneTimePaymentDate: string = ''
+    oneTimePaymentDate: string = '',
+    startDate: Date = new Date()
 ): { schedule: AmortizationEntry[], summary: Partial<MortgageSummary> } {
   if (principal <= 0) {
     return {
@@ -52,18 +65,16 @@ function generateAmortizationSchedule(
   // Initial check: does the loan require PMI based on starting params?
   const initialNeedsPmi = ltv > PMI_LTV_CUTOFF;
   let oneTimePaymentApplied = false;
+  // YYYY-MM -> absolute month index, so comparisons never depend on the day of month
+  const oneTimePaymentMonthIndex = oneTimePaymentDate
+    ? (() => { const [y, m] = oneTimePaymentDate.split('-').map(Number); return y * 12 + (m - 1); })()
+    : NaN;
   
   while (balance > 0) {
     period++;
     const beginningBalance = balance;
     
-    // Calculate Date for this period
-    const currentDate = new Date();
-    if(isBiWeekly) {
-        currentDate.setDate(currentDate.getDate() + (period * 14));
-    } else {
-        currentDate.setMonth(currentDate.getMonth() + period);
-    }
+    const currentDate = paymentDateFor(startDate, period, isBiWeekly);
     
     const interest = balance * ratePerPeriod;
 
@@ -81,11 +92,12 @@ function generateAmortizationSchedule(
     // Logic for regular extra payment
     let currentExtraPayment = extraPaymentPerPeriod;
 
-    // Logic for One-Time Payment
-    if (oneTimePayment > 0 && oneTimePaymentDate && !oneTimePaymentApplied) {
-        const [targetYear, targetMonth] = oneTimePaymentDate.split('-').map(Number);
-        // Note: getMonth() is 0-indexed, oneTimePaymentDate format YYYY-MM is 1-indexed
-        if (currentDate.getFullYear() === targetYear && (currentDate.getMonth() + 1) === targetMonth) {
+    // One-time payment goes on the first scheduled payment dated in or after the chosen month.
+    // Same rule for every plan, so monthly and bi-weekly always receive it on the same date.
+    // A month before the first payment lands on the first payment; a month past payoff is never applied.
+    if (oneTimePayment > 0 && !oneTimePaymentApplied && !Number.isNaN(oneTimePaymentMonthIndex)) {
+        const paymentMonthIndex = currentDate.getFullYear() * 12 + currentDate.getMonth();
+        if (paymentMonthIndex >= oneTimePaymentMonthIndex) {
             currentExtraPayment += oneTimePayment;
             oneTimePaymentApplied = true;
         }
@@ -128,13 +140,8 @@ function generateAmortizationSchedule(
     }
   }
 
-  const payoffDate = new Date();
   const periods = schedule.length;
-  if (isBiWeekly) {
-    payoffDate.setDate(payoffDate.getDate() + periods * 14);
-  } else {
-    payoffDate.setMonth(payoffDate.getMonth() + periods);
-  }
+  const payoffDate = paymentDateFor(startDate, periods, isBiWeekly);
   const payoffTermMonths = Math.ceil(periods / (periodsPerYear / 12));
 
   const summary: Partial<MortgageSummary> = {
@@ -148,6 +155,10 @@ function generateAmortizationSchedule(
   };
   
   return { schedule, summary };
+}
+
+function paymentDateFor(startDate: Date, period: number, isBiWeekly: boolean): Date {
+  return isBiWeekly ? addDays(startDate, period * 14) : addMonths(startDate, period);
 }
 
 function generateAnnualSummary(schedule: AmortizationEntry[], periodsPerYear: number): AnnualSummaryEntry[] {
@@ -201,7 +212,8 @@ function formatTimeSaved(totalMonthsSaved: number): string {
     return result.trim();
 }
 
-export function calculateAllScenarios(params: MortgageParams): CalculationResults {
+// startDate is the closing date; the first monthly payment falls one month later. Defaults to today.
+export function calculateAllScenarios(params: MortgageParams, startDate: Date = new Date()): CalculationResults {
     const { homePrice, downPayment, loanTerm, interestRate, propertyTaxes, homeownersInsurance, hoaDues, pmi, extraPayment, extraPaymentFrequency, oneTimePayment, oneTimePaymentDate, oneTimePaymentMode } = params;
     const principal = homePrice - downPayment;
     
@@ -222,7 +234,8 @@ export function calculateAllScenarios(params: MortgageParams): CalculationResult
         principal, interestRate, loanTerm, false, 0, homePrice, 
         pmi, // Pass the monthly PMI amount
         applyToMonthly ? oneTimePayment : 0, 
-        applyToMonthly ? oneTimePaymentDate : ''
+        applyToMonthly ? oneTimePaymentDate : '',
+        startDate
     );
     const monthlyAnnualSummary = generateAnnualSummary(monthlyResult.schedule, 12);
     const monthlySummary: MortgageSummary = {
@@ -241,7 +254,8 @@ export function calculateAllScenarios(params: MortgageParams): CalculationResult
         principal, interestRate, loanTerm, true, 0, homePrice,
         pmi, // Pass the monthly PMI amount
         applyToBiWeekly ? oneTimePayment : 0, 
-        applyToBiWeekly ? oneTimePaymentDate : ''
+        applyToBiWeekly ? oneTimePaymentDate : '',
+        startDate
     );
     const biWeeklyAnnualSummary = generateAnnualSummary(biWeeklyResult.schedule, 26);
     const biWeeklyMonthsSaved = monthlySummary.payoffTermMonths - biWeeklyResult.summary.payoffTermMonths!;
@@ -271,7 +285,8 @@ export function calculateAllScenarios(params: MortgageParams): CalculationResult
         principal, interestRate, loanTerm, true, extraPaymentPerBiWeeklyPeriod, homePrice, 
         pmi, // Pass the monthly PMI amount
         applyToBiWeeklyExtra ? oneTimePayment : 0, 
-        applyToBiWeeklyExtra ? oneTimePaymentDate : ''
+        applyToBiWeeklyExtra ? oneTimePaymentDate : '',
+        startDate
     );
     const biWeeklyExtraAnnualSummary = generateAnnualSummary(biWeeklyExtraResult.schedule, 26);
     const biWeeklyExtraMonthsSaved = monthlySummary.payoffTermMonths - biWeeklyExtraResult.summary.payoffTermMonths!;
