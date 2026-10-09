@@ -41,6 +41,12 @@ const RESPONSE_SCHEMA = {
     required: ['timeline', 'bottomLine', 'fullAnalysis'],
 };
 
+// Google retires model names; set GEMINI_MODEL in Vercel to switch without a code change
+const DEFAULT_MODEL = 'gemini-3.8-flash';
+
+// Tried in order: the second is used only if the first call fails (e.g. Google retires or limits a model)
+const MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash'];
+
 const FREQUENCIES = ['weekly', 'bi-weekly', 'monthly', 'annually'] as const;
 const MODES = ['monthly', 'biWeekly', 'biWeeklyWithExtra', 'all'] as const;
 
@@ -78,9 +84,21 @@ function readParams(raw: unknown): MortgageParams | null {
     };
 }
 
+// Short, key-free description of a failure, so the page can say why the AI is unavailable
+const describe = (error: unknown): string => {
+    const message = error instanceof Error ? error.message : String(error);
+    const reason = /"reason":"([A-Z_]+)"/.exec(message)?.[1] ?? /"status":"([A-Z_]+)"/.exec(message)?.[1];
+    return (reason ?? message).replace(/AIza[0-9A-Za-z_-]{20,}/g, '[key]').slice(0, 160);
+};
+
+// Health check: open /api/insights in a browser to see whether the function loads and sees the key
+export function GET(): Response {
+    return Response.json({ ok: true, keyConfigured: Boolean(process.env.GEMINI_API_KEY), model: process.env.GEMINI_MODEL || DEFAULT_MODEL, node: process.version });
+}
+
 export async function POST(request: Request): Promise<Response> {
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return Response.json({ error: 'AI is not configured' }, { status: 503 });
+    if (!apiKey) return Response.json({ error: 'AI is not configured', reason: 'GEMINI_API_KEY is not set for this environment' }, { status: 503 });
 
     let body: Record<string, unknown>;
     try {
@@ -99,16 +117,21 @@ export async function POST(request: Request): Promise<Response> {
     const results = calculateAllScenarios(params);
     const timeline = getTimelineSnapshots(results, params, appreciationRate, includeCarryingCosts, closingCostRate);
 
-    try {
-        const ai = new GoogleGenAI({ apiKey });
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: buildInsightsPrompt(params, timeline, appreciationRate, includeCarryingCosts, closingCostRate),
-            config: { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA },
-        });
-        return Response.json({ text: response.text ?? null });
-    } catch (error) {
-        console.error('Gemini request failed:', error);
-        return Response.json({ error: 'AI request failed' }, { status: 502 });
+    const ai = new GoogleGenAI({ apiKey });
+    const contents = buildInsightsPrompt(params, timeline, appreciationRate, includeCarryingCosts, closingCostRate);
+    let lastError: unknown;
+    for (const model of MODELS) {
+        try {
+            const response = await ai.models.generateContent({
+                model,
+                contents,
+                config: { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA },
+            });
+            return Response.json({ text: response.text ?? null, model });
+        } catch (error) {
+            console.error(`Gemini request failed with ${model}:`, error);
+            lastError = error;
+        }
     }
+    return Response.json({ error: 'AI request failed', reason: describe(lastError) }, { status: 502 });
 }

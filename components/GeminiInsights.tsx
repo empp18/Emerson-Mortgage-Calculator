@@ -171,7 +171,7 @@ export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results,
 
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-brand-line pt-4 text-[12px] text-brand-muted">
             <span>
-              {analysis.insights.source === 'ai' ? 'Written by AI from your numbers' : 'Summary built from your numbers (AI not available)'} · {analysis.generatedOn}
+              {analysis.insights.source === 'ai' ? 'Written by AI from your numbers' : `Summary built from your numbers (AI not available${analysis.insights.unavailableReason ? `: ${analysis.insights.unavailableReason}` : ''})`} · {analysis.generatedOn}
             </span>
             <button type="button" onClick={generate} className="rounded-[8px] border border-brand-line px-3 py-1.5 text-[12.5px] font-semibold text-brand-primary transition hover:bg-brand-light">
               Regenerate

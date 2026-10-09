@@ -33,6 +33,6 @@ Type-check with `npx tsc --noEmit`.
 
 ## Gemini key
 
-The Gemini key lives only on the server. `api/insights.ts` reads `GEMINI_API_KEY` from the Vercel project's environment variables; the browser never sees it. The endpoint accepts calculator inputs only and builds the prompt itself, so it cannot be used as a general Gemini proxy.
+The Gemini key lives only on the server. `api/insights.ts` reads `GEMINI_API_KEY` from the Vercel project's environment variables; the browser never sees it. The endpoint accepts calculator inputs only and builds the prompt itself, so it cannot be used as a general Gemini proxy. It asks `gemini-3.8-flash` first and falls back to `gemini-3.6-flash` if that call fails; the list is `MODELS` in `api/insights.ts`. Open `/api/insights` in a browser for a health check. The model defaults to `gemini-3.8-flash`; set `GEMINI_MODEL` in Vercel to change it when Google retires a model. Open `/api/insights` in a browser for a health check (shows whether the key is set and which model is used).
 
 Locally, `npm run dev` has no `/api` route, so the analysis shows the numbers-only summary. Use `vercel dev` (with the key in your Vercel development environment) to exercise the real endpoint. Never put the key in a `VITE_` variable or in client code.

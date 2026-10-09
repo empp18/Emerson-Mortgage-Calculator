@@ -569,14 +569,14 @@ export default function App() {
                 <PlanCards params={params} results={results} appreciationRate={appreciationRate} closingCostRate={closingCostRate} includeCarryingCosts={includeCarryingCosts} />
                 <BalanceChartCard params={params} results={results} />
 
-                <details className="group min-w-0 overflow-hidden rounded-2xl border border-brand-line bg-white p-6 md:p-8">
+                <details className="min-w-0 overflow-hidden rounded-2xl border border-brand-line bg-white p-6 md:p-8">
                   <summary className="cursor-pointer font-serif text-xl font-semibold text-brand-dark">Show the math</summary>
                   <div className="mt-6">
                     <FinancialBreakdown params={params} results={results} appreciationRate={appreciationRate} closingCostRate={closingCostRate} includeCarryingCosts={includeCarryingCosts} />
                   </div>
                 </details>
 
-                <details className="group min-w-0 overflow-hidden rounded-2xl border border-brand-line bg-white p-6 md:p-8">
+                <details className="min-w-0 overflow-hidden rounded-2xl border border-brand-line bg-white p-6 md:p-8">
                   <summary className="cursor-pointer font-serif text-xl font-semibold text-brand-dark">Payment details and schedule</summary>
                   <div className="mt-6 space-y-8">
                     <PaymentBreakdown results={results} />

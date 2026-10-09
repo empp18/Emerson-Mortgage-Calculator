@@ -169,6 +169,7 @@ export interface MortgageInsights {
     bottomLine: { lead: string; emphasis: string }; // one sentence; emphasis is the closing clause
     fullAnalysis: { label: string; text: string }[];
     source: 'ai' | 'fallback'; // fallback text is built from the numbers, not written by the AI
+    unavailableReason?: string; // why the AI was not used, when known
 }
 
 // -$62k / +$101k, with a typographic minus. Shared by the analysis card and the fallback text.
@@ -333,11 +334,16 @@ export async function getMortgageInsights(
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ params, appreciationRate, includeCarryingCosts, closingCostRate }),
         });
-        if (!response.ok) return buildFallbackInsights(timeline);
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            const reason = typeof body?.reason === 'string' ? body.reason : `server responded ${response.status}`;
+            console.error('AI analysis unavailable:', reason);
+            return { ...buildFallbackInsights(timeline), unavailableReason: reason };
+        }
         const { text } = await response.json();
         return parseMortgageInsights(typeof text === 'string' ? text : null, timeline);
     } catch (error) {
         console.error('Error fetching insights:', error);
-        return buildFallbackInsights(timeline);
+        return { ...buildFallbackInsights(timeline), unavailableReason: 'could not reach /api/insights' };
     }
 }
