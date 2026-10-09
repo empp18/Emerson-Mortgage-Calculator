@@ -150,8 +150,22 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, isL
       }
   };
 
+  // Inputs the amortization math cannot handle. Shown to the user and blocks submission.
+  const validationError = (() => {
+    const price = parseFloat(homePrice) || 0;
+    const dp = parseFloat(downPayment) || 0;
+    const term = parseInt(loanTerm, 10);
+    const rate = parseFloat(interestRate);
+    if (!(price > 0)) return 'Home price must be greater than $0.';
+    if (!(dp >= 0) || dp > price) return 'Down payment must be between $0 and the home price.';
+    if (!Number.isInteger(term) || term < 1 || term > 50) return 'Loan term must be a whole number of years from 1 to 50.';
+    if (!(rate >= 0) || rate > 30) return 'Interest rate must be between 0% and 30%.';
+    return null;
+  })();
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (validationError) return;
     onCalculate({
       homePrice: parseFloat(homePrice) || 0,
       downPayment: parseFloat(downPayment) || 0,
@@ -353,9 +367,12 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, isL
                 </div>
             </div>
         </div>
+        {validationError && (
+          <p role="alert" className="mt-4 text-sm text-red-600">{validationError}</p>
+        )}
         <button
           type="submit"
-          disabled={isLoading}
+          disabled={isLoading || !!validationError}
           className="w-full mt-6 bg-brand-secondary text-brand-dark font-bold py-3 px-4 rounded-lg hover:bg-yellow-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-secondary transition duration-300 ease-in-out disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center"
         >
           {isLoading ? (

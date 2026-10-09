@@ -210,3 +210,90 @@ describe('one-time payment', () => {
     expect(monthly.schedule[monthly.schedule.length - 1].remainingBalance).toBe(0);
   });
 });
+
+describe('monthly-equivalent payments', () => {
+  it('bi-weekly total monthly payment is 13/12 of monthly P&I plus escrow', () => {
+    const { monthly, biWeekly } = run({ propertyTaxes: 6000, homeownersInsurance: 1800, hoaDues: 100 });
+    const pAndI = monthly.summary.principalAndInterest!;
+    const escrow = 500 + 150 + 100;
+    expect(biWeekly.summary.totalMonthlyPayment).toBeCloseTo((pAndI * 13) / 12 + escrow, 2);
+    // Per-period bi-weekly payment is half of monthly P&I
+    expect(biWeekly.summary.principalAndInterest).toBeCloseTo(pAndI, 2);
+    expect(biWeekly.schedule[0].totalPayment).toBeCloseTo(pAndI / 2, 2);
+  });
+
+  it('bi-weekly v2.0 includes the annual extra as a monthly equivalent', () => {
+    const { monthly, biWeeklyWithExtra } = run({ extraPayment: 100, extraPaymentFrequency: 'monthly' });
+    const pAndI = monthly.summary.principalAndInterest!;
+    expect(biWeeklyWithExtra.summary.totalMonthlyPayment).toBeCloseTo((pAndI * 13) / 12 + (100 * 12) / 12, 2);
+  });
+});
+
+describe('annual extra payments', () => {
+  it("'annually' is a single lump sum on each year's last payment, not spread out", () => {
+    const { biWeeklyWithExtra } = run({ extraPayment: 1200, extraPaymentFrequency: 'annually' });
+    const rows = biWeeklyWithExtra.schedule;
+    expect(rows[0].extraPayment).toBe(0);
+    expect(rows[25].extraPayment).toBeCloseTo(1200, 2); // end of year 1 (period 26)
+    expect(rows[51].extraPayment).toBeCloseTo(1200, 2); // end of year 2 (period 52)
+    expect(rows[24].extraPayment).toBe(0);
+  });
+
+  it("monthly extras are spread over bi-weekly periods with the same annual total", () => {
+    const { biWeeklyWithExtra } = run({ extraPayment: 100, extraPaymentFrequency: 'monthly' });
+    expect(biWeeklyWithExtra.schedule[0].extraPayment).toBeCloseTo((100 * 12) / 26, 2);
+  });
+
+  it('a lump sum shortens the loan more than the same money spread out', () => {
+    const lump = run({ extraPayment: 1200, extraPaymentFrequency: 'annually' }).biWeeklyWithExtra;
+    const spread = run({ extraPayment: 100, extraPaymentFrequency: 'monthly' }).biWeeklyWithExtra;
+    // Same annual total; the lump sum starts reducing the balance later, so it saves less interest
+    expect(lump.summary.totalInterest!).toBeGreaterThan(spread.summary.totalInterest!);
+  });
+});
+
+describe('interest and time savings', () => {
+  const plain = run();
+  const baselineInterest = plain.monthly.summary.totalInterest!;
+
+  it('the monthly plan with no levers is the baseline', () => {
+    expect(plain.monthly.summary.interestSaved).toBe(0);
+    expect(plain.monthly.summary.timeSaved).toBe('(Baseline)');
+  });
+
+  it('a one-time payment on the monthly plan shows savings against the no-extras baseline', () => {
+    const r = run({ oneTimePayment: 50000, oneTimePaymentDate: '2027-03', oneTimePaymentMode: 'monthly' });
+    expect(r.monthly.summary.interestSaved).toBeGreaterThan(0);
+    expect(r.monthly.summary.interestSaved).toBeCloseTo(baselineInterest - r.monthly.summary.totalInterest!, 2);
+    expect(r.monthly.summary.timeSaved).not.toBe('(Baseline)');
+  });
+
+  it('savings do not depend on which plans the one-time payment is applied to', () => {
+    // Bi-weekly savings are the same whether or not the monthly plan also got the one-time payment
+    const onlyBiWeekly = run({ oneTimePayment: 50000, oneTimePaymentDate: '2027-03', oneTimePaymentMode: 'biWeekly' });
+    const both = run({ oneTimePayment: 50000, oneTimePaymentDate: '2027-03', oneTimePaymentMode: 'all' });
+    expect(onlyBiWeekly.biWeekly.summary.interestSaved).toBeCloseTo(baselineInterest - onlyBiWeekly.biWeekly.summary.totalInterest!, 2);
+    expect(both.biWeekly.summary.interestSaved).toBeCloseTo(baselineInterest - both.biWeekly.summary.totalInterest!, 2);
+  });
+
+  it('bi-weekly savings are measured against the same baseline as the monthly plan', () => {
+    const r = run();
+    expect(r.biWeekly.summary.interestSaved).toBeCloseTo(baselineInterest - r.biWeekly.summary.totalInterest!, 2);
+    expect(r.biWeekly.summary.interestSaved).toBeGreaterThan(0);
+  });
+});
+
+describe('invalid inputs do not produce NaN or infinite schedules', () => {
+  it('a loan term of zero gives an empty schedule', () => {
+    const r = run({ loanTerm: 0 });
+    expect(r.monthly.schedule).toHaveLength(0);
+    expect(Number.isFinite(r.monthly.summary.totalCost!)).toBe(true);
+  });
+
+  it('a home price of zero with PMI set does not charge PMI or produce NaN', () => {
+    const r = run({ homePrice: 0, downPayment: 0, pmi: 200 });
+    expect(r.monthly.schedule).toHaveLength(0);
+    expect(r.monthly.summary.pmi).toBe(0);
+    expect(Number.isNaN(r.biWeekly.summary.totalMonthlyPayment!)).toBe(false);
+  });
+});

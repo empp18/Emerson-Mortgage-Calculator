@@ -5,7 +5,7 @@ import autoTable from 'jspdf-autotable';
 import { CalculatorForm } from './components/CalculatorForm';
 import { GeminiInsights } from './components/GeminiInsights';
 import { InfoTooltip } from './components/ui/InfoTooltip';
-import { calculateAllScenarios } from './services/mortgageCalculator';
+import { calculateAllScenarios, annualExtraPaymentFor } from './services/mortgageCalculator';
 import { getScenarioSnapshots } from './services/geminiService';
 import type { MortgageParams, CalculationResults, AmortizationEntry } from './types';
 
@@ -57,16 +57,10 @@ const ComparisonTable: React.FC<{ results: CalculationResults, params: MortgageP
     const biWeeklyEscrow = monthlyEscrow * 12 / 26;
     const biWeeklyPayment = biWeeklyPAndI + biWeeklyEscrow;
 
-    const annualExtraPayment = useMemo(() => {
-        let payment = 0;
-        switch(params.extraPaymentFrequency) {
-            case 'weekly': payment = params.extraPayment * 52; break;
-            case 'bi-weekly': payment = params.extraPayment * 26; break;
-            case 'monthly': payment = params.extraPayment * 12; break;
-            case 'annually': payment = params.extraPayment; break;
-        }
-        return payment;
-    }, [params]);
+    const annualExtraPayment = annualExtraPaymentFor(params);
+    const extraLabel = params.extraPaymentFrequency === 'annually'
+        ? `+ ${formatCurrency(annualExtraPayment)} / yr`
+        : `+ ${formatCurrency(annualExtraPayment / 26)} Extra`;
 
     const getOneTimeMsg = (modeMatch: boolean) => {
          if (params.oneTimePayment && params.oneTimePayment > 0 && modeMatch) {
@@ -89,7 +83,7 @@ const ComparisonTable: React.FC<{ results: CalculationResults, params: MortgageP
         { 
             title: 'Bi-Weekly v2.0', 
             data: results.biWeeklyWithExtra.summary, 
-            paymentAmount: `${formatCurrency(biWeeklyPayment)} + ${formatCurrency(annualExtraPayment/26)} Extra ${getOneTimeMsg(params.oneTimePaymentMode === 'biWeeklyWithExtra' || params.oneTimePaymentMode === 'all')}` 
+            paymentAmount: `${formatCurrency(biWeeklyPayment)} ${extraLabel} ${getOneTimeMsg(params.oneTimePaymentMode === 'biWeeklyWithExtra' || params.oneTimePaymentMode === 'all')}`
         }
     ];
 
@@ -123,7 +117,7 @@ const ComparisonTable: React.FC<{ results: CalculationResults, params: MortgageP
                                     </div>
                                 </td>
                                 {scenarios.map(s => {
-                                    if (row.label === 'Interest Savings' && s.title === 'Monthly') {
+                                    if (row.key === 'interestSaved' && s.title === 'Monthly' && !s.data.interestSaved) {
                                         return (
                                             <td key={s.title} className="py-3 px-3 text-sm text-gray-800 font-normal">
                                                 (Baseline)
@@ -799,32 +793,13 @@ export default function App() {
       12 /
       26;
 
-  let annualExtraPayment = 0;
-  if (params.extraPayment > 0) {
-    switch (params.extraPaymentFrequency) {
-      case 'weekly':
-        annualExtraPayment = params.extraPayment * 52;
-        break;
-      case 'bi-weekly':
-        annualExtraPayment = params.extraPayment * 26;
-        break;
-      case 'monthly':
-        annualExtraPayment = params.extraPayment * 12;
-        break;
-      case 'annually':
-        annualExtraPayment = params.extraPayment;
-        break;
-    }
-  }
-
-  const extraPerBiWeeklyPeriod = annualExtraPayment / 26;
+  const annualExtraPayment = annualExtraPaymentFor(params);
   const biWeeklyAcceleratedDisplay =
-    extraPerBiWeeklyPeriod > 0
-      ? `${formatCurrency(biWeeklyPayment)} + ${formatCurrency(
-          extraPerBiWeeklyPeriod
-        )}`
-      : formatCurrency(biWeeklyPayment);
-
+    annualExtraPayment <= 0
+      ? formatCurrency(biWeeklyPayment)
+      : params.extraPaymentFrequency === 'annually'
+        ? `${formatCurrency(biWeeklyPayment)} + ${formatCurrency(annualExtraPayment)} / yr`
+        : `${formatCurrency(biWeeklyPayment)} + ${formatCurrency(annualExtraPayment / 26)}`;
   const oneTimeMsg = (match: boolean) =>
     params.oneTimePayment && params.oneTimePayment > 0 && match
       ? ` + 1x ${formatCurrency(params.oneTimePayment)}`
@@ -850,9 +825,9 @@ export default function App() {
         ),
     ],
     ['Payoff Date', monthlySummary.payoffDate, biWeeklySummary.payoffDate, biWeeklyExtraSummary.payoffDate],
-    ['Time Saved', '(Baseline)', biWeeklySummary.timeSaved, biWeeklyExtraSummary.timeSaved],
+    ['Time Saved', monthlySummary.timeSaved, biWeeklySummary.timeSaved, biWeeklyExtraSummary.timeSaved],
     ['Total Interest', formatCurrency(monthlySummary.totalInterest), formatCurrency(biWeeklySummary.totalInterest), formatCurrency(biWeeklyExtraSummary.totalInterest)],
-    ['Interest Savings', '(Baseline)', formatCurrency(biWeeklySummary.interestSaved), formatCurrency(biWeeklyExtraSummary.interestSaved)],
+    ['Interest Savings', monthlySummary.interestSaved > 0 ? formatCurrency(monthlySummary.interestSaved) : '(Baseline)', formatCurrency(biWeeklySummary.interestSaved), formatCurrency(biWeeklyExtraSummary.interestSaved)],
   ].map(x => x.map(sanitize));
 
   autoTable(doc, {
@@ -1093,18 +1068,6 @@ export default function App() {
         </div>
       </main>
 
-      <footer className="bg-brand-dark text-white text-center py-6 mt-8 no-print">
-         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <p className="font-bold text-lg">Emerson Pinto | Your Favorite Real Estate Agent</p>
-            <p className="text-sm mt-1">emerson.pinto@kw.com | (609) 286-7269</p>
-            <a 
-                href="mailto:emerson.pinto@kw.com?subject=Mortgage Consultation Request&body=Hi Emerson,%0D%0A%0D%0AI'd like to schedule a consultation to discuss my real estate goals.%0D%0A%0D%0AThanks!"
-                className="mt-4 inline-block bg-brand-secondary text-brand-dark font-bold py-2 px-5 rounded-lg hover:bg-yellow-500 transition duration-300"
-            >
-                Schedule a Consultation
-            </a>
-         </div>
-      </footer>
     </div>
     </>
   );
