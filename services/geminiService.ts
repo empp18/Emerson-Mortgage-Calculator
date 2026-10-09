@@ -142,107 +142,261 @@ export function getScenarioSnapshots(
     };
 }
 
-export async function getMortgageInsights(params: MortgageParams, results: CalculationResults, appreciationRate: number, includeCarryingCosts: boolean = false): Promise<string> {
-  if (!process.env.API_KEY) {
-    console.error("API_KEY environment variable not set.");
-    return JSON.stringify([
-        {
-          title: "API Key Not Configured",
-          tip: "Please configure your Gemini API key as an environment variable (API_KEY) to receive AI-powered mortgage tips."
-        }
-      ]);
-  }
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-  const timelines = [7, 13, 20];
-  const snapshots = timelines.map(year => ({
-      year,
-      ...getScenarioSnapshots(results, params, year, appreciationRate, includeCarryingCosts)
-  }));
+export type ScenarioSnapshots = ReturnType<typeof getScenarioSnapshots>;
+export type PlanKey = keyof ScenarioSnapshots;
 
-  const prompt = `
+// The sale points the analysis compares
+export const INSIGHT_YEARS = [7, 13, 20] as const;
+export type InsightYear = (typeof INSIGHT_YEARS)[number];
+
+export const PLAN_KEYS: PlanKey[] = ['monthly', 'biWeekly', 'biWeeklyExtra'];
+export const PLAN_NAMES: Record<PlanKey, string> = {
+    monthly: 'Monthly',
+    biWeekly: 'Bi-Weekly',
+    biWeeklyExtra: 'Bi-Weekly v2.0',
+};
+
+export interface TimelinePoint {
+    year: InsightYear;
+    plans: ScenarioSnapshots;
+}
+
+export interface MortgageInsights {
+    timeline: { year: InsightYear; subtitle: string; takeaway: string }[];
+    bottomLine: { lead: string; emphasis: string }; // one sentence; emphasis is the closing clause
+    fullAnalysis: { label: string; text: string }[];
+}
+
+// -$62k / +$101k, with a typographic minus. Shared by the analysis card and the fallback text.
+export const formatSignedThousands = (value: number): string => {
+    const thousands = Math.round(Math.abs(value) / 1000);
+    if (thousands === 0) return '$0';
+    return `${value < 0 ? '−' : '+'}$${thousands}k`;
+};
+
+export function getTimelineSnapshots(
+    results: CalculationResults,
+    params: MortgageParams,
+    appreciationRate: number,
+    includeCarryingCosts: boolean
+): TimelinePoint[] {
+    return INSIGHT_YEARS.map(year => ({
+        year,
+        plans: getScenarioSnapshots(results, params, year, appreciationRate, includeCarryingCosts),
+    }));
+}
+
+const bestPlan = (point: TimelinePoint) => {
+    const gains = PLAN_KEYS.map(key => ({ key, gain: point.plans[key].trueNetGain }));
+    return gains.reduce((best, current) => (current.gain > best.gain ? current : best));
+};
+
+// Deterministic analysis from the numbers alone. Used when the AI is unavailable or its reply is unusable.
+export function buildFallbackInsights(timeline: TimelinePoint[]): MortgageInsights {
+    const rows = timeline.map(point => {
+        const gains = PLAN_KEYS.map(key => point.plans[key].trueNetGain);
+        const best = bestPlan(point);
+        const subtitle = gains.every(g => g < 0)
+            ? 'All plans lose money'
+            : gains.every(g => g > 0)
+                ? 'All plans gain'
+                : 'Results are mixed';
+        const verdict = best.gain < 0 ? 'loses the least' : 'comes out best';
+        const takeaway = `${PLAN_NAMES[best.key]} ${verdict}, at ${formatSignedThousands(best.gain)} true net gain.`;
+        return {
+            year: point.year,
+            subtitle,
+            takeaway,
+            range: `The plans sit between ${formatSignedThousands(Math.min(...gains))} and ${formatSignedThousands(Math.max(...gains))}.`,
+        };
+    });
+
+    const labels = ['Short-term sale (7 years)', 'Mid-term (13 years)', 'Long term (20 years)'];
+    const fullAnalysis = rows.map((row, i) => ({ label: labels[i], text: `${row.takeaway} ${row.range}` }));
+
+    const last = timeline[timeline.length - 1];
+    const bestAtLast = bestPlan(last);
+    const edgeOverMonthly = Math.round(Math.abs(bestAtLast.gain - last.plans.monthly.trueNetGain) / 1000);
+    fullAnalysis.push({
+        label: 'Strategy',
+        text: `At ${last.year} years, ${PLAN_NAMES[bestAtLast.key]} gives the best true net gain at ${formatSignedThousands(bestAtLast.gain)}, $${edgeOverMonthly}k more than the Monthly plan.`,
+    });
+
+    const firstAhead = timeline.find(point => bestPlan(point).gain > 0);
+    const bottomLine = firstAhead
+        ? {
+            lead: `The earliest sale point where a plan comes out ahead is year ${firstAhead.year}, `,
+            emphasis: `${PLAN_NAMES[bestPlan(firstAhead).key]} nets ${formatSignedThousands(bestPlan(firstAhead).gain)}.`,
+        }
+        : {
+            lead: `None of the plans come out ahead within ${last.year} years, `,
+            emphasis: `the best one still shows ${formatSignedThousands(bestAtLast.gain)}.`,
+        };
+
+    return {
+        timeline: rows.map(({ year, subtitle, takeaway }) => ({ year, subtitle, takeaway })),
+        bottomLine,
+        fullAnalysis,
+    };
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const isText = (value: unknown): value is string =>
+    typeof value === 'string' && value.trim().length > 0;
+
+// Turns the model's JSON reply into MortgageInsights. Any problem returns the fallback instead.
+export function parseMortgageInsights(text: string | null | undefined, timeline: TimelinePoint[]): MortgageInsights {
+    const fallback = buildFallbackInsights(timeline);
+    if (!text) return fallback;
+
+    let data: unknown;
+    try {
+        data = JSON.parse(text);
+    } catch {
+        return fallback;
+    }
+    if (!isRecord(data)) return fallback;
+
+    const rawTimeline = data.timeline;
+    if (!Array.isArray(rawTimeline)) return fallback;
+    const parsedTimeline: MortgageInsights['timeline'] = [];
+    for (const year of INSIGHT_YEARS) {
+        const item = rawTimeline.find(entry => isRecord(entry) && Number(entry.year) === year);
+        if (!isRecord(item) || !isText(item.subtitle) || !isText(item.takeaway)) return fallback;
+        parsedTimeline.push({ year, subtitle: item.subtitle.trim(), takeaway: item.takeaway.trim() });
+    }
+
+    const rawBottomLine = data.bottomLine;
+    if (!isRecord(rawBottomLine) || !isText(rawBottomLine.lead) || !isText(rawBottomLine.emphasis)) return fallback;
+
+    const rawAnalysis = data.fullAnalysis;
+    if (!Array.isArray(rawAnalysis) || rawAnalysis.length < 3 || rawAnalysis.length > 4) return fallback;
+    const fullAnalysis: MortgageInsights['fullAnalysis'] = [];
+    for (const item of rawAnalysis) {
+        if (!isRecord(item) || !isText(item.label) || !isText(item.text)) return fallback;
+        fullAnalysis.push({ label: item.label.trim(), text: item.text.trim() });
+    }
+
+    return {
+        timeline: parsedTimeline,
+        bottomLine: { lead: rawBottomLine.lead.trim(), emphasis: rawBottomLine.emphasis.trim() },
+        fullAnalysis,
+    };
+}
+
+const buildInsightsPrompt = (params: MortgageParams, timeline: TimelinePoint[], appreciationRate: number, includeCarryingCosts: boolean) => `
     You are an expert real estate financial analyst. Analyze the following mortgage scenarios to provide high-level strategic advice.
-    
+
     **Core Philosophy:**
     When analyzing home-sale outcomes, it is important to recognize that the net proceeds a homeowner receives at closing do not necessarily represent their true financial gain. Homeowners often see a large check when they sell and assume this amount is ‘profit,’ but this is misleading. Mortgage interest is a real cost — money that never comes back — and in many cases it can exceed the amount of appreciation gained during ownership. This means a homeowner can walk away with significant equity at sale while actually experiencing a financial loss once interest costs are accounted for.
 
     Therefore, you must calculate not only equity and net sale proceeds, but also total interest paid. You must then evaluate the "True Gain" and "True Net Gain":
-    
+
     - **Net Proceeds**: Sale Price - Closing Costs (8%) - Remaining Mortgage Balance.
     - **True Gain**: Net Proceeds - Original Down Payment - Principal Paid. (Principal paid came out of the homeowner's pocket, so getting it back at closing is not a gain. This equals Sale Price - Closing Costs - Original Purchase Price.)
     - **True Net Gain**: True Gain - Total Interest Paid${includeCarryingCosts ? ' - Carrying Costs (property taxes, insurance, HOA and PMI paid)' : ''}.
-    
+
     This allows you to accurately determine whether the homeowner truly profited or incurred a loss, even in cases where the sale appears profitable on the surface.
-    
+
     **Loan Details:**
     - Original Price: $${params.homePrice.toLocaleString()}
     - Down Payment: $${params.downPayment.toLocaleString()}
     - Rate: ${params.interestRate}%
     - Assumed Appreciation Rate: ${appreciationRate}%
-    
+
     **Financial Analysis at Median Selling Timelines (assuming ${appreciationRate}% appreciation & 8% Closing Costs):**
-    
-    ${snapshots.map(s => `
-    --- TIMELINE: ${s.year} YEARS ---
+
+    ${timeline.map(({ year, plans }) => `
+    --- TIMELINE: ${year} YEARS ---
     1. Monthly Scenario:
-       - Net Proceeds (Check at Closing): $${Math.round(s.monthly.netProceeds).toLocaleString()}
-       - Total Interest Cost: $${Math.round(s.monthly.totalInterestToDate).toLocaleString()}
-       - True Net Gain (Real Profit/Loss): $${Math.round(s.monthly.trueNetGain).toLocaleString()}
-    
+       - Net Proceeds (Check at Closing): $${Math.round(plans.monthly.netProceeds).toLocaleString()}
+       - Total Interest Cost: $${Math.round(plans.monthly.totalInterestToDate).toLocaleString()}
+       - True Net Gain (Real Profit/Loss): $${Math.round(plans.monthly.trueNetGain).toLocaleString()}
+
     2. Bi-Weekly Scenario:
-       - Net Proceeds: $${Math.round(s.biWeekly.netProceeds).toLocaleString()}
-       - Total Interest Cost: $${Math.round(s.biWeekly.totalInterestToDate).toLocaleString()}
-       - True Net Gain: $${Math.round(s.biWeekly.trueNetGain).toLocaleString()}
-       
+       - Net Proceeds: $${Math.round(plans.biWeekly.netProceeds).toLocaleString()}
+       - Total Interest Cost: $${Math.round(plans.biWeekly.totalInterestToDate).toLocaleString()}
+       - True Net Gain: $${Math.round(plans.biWeekly.trueNetGain).toLocaleString()}
+
     3. Bi-Weekly v2.0 (Accelerated):
-       - Net Proceeds: $${Math.round(s.biWeeklyExtra.netProceeds).toLocaleString()}
-       - Total Interest Cost: $${Math.round(s.biWeeklyExtra.totalInterestToDate).toLocaleString()}
-       - True Net Gain: $${Math.round(s.biWeeklyExtra.trueNetGain).toLocaleString()}
+       - Net Proceeds: $${Math.round(plans.biWeeklyExtra.netProceeds).toLocaleString()}
+       - Total Interest Cost: $${Math.round(plans.biWeeklyExtra.totalInterestToDate).toLocaleString()}
+       - True Net Gain: $${Math.round(plans.biWeeklyExtra.trueNetGain).toLocaleString()}
     `).join('\n')}
 
     **Task:**
-    Provide 4 distinct insights in JSON format.
-    1. **Short-Term Sale (7 Years):** Focus on True Net Gain. Are they actually profitable after interest and costs? Or is the "profit" an illusion?
-    2. **Mid-Term Sale (13 Years):** Compare the "True Net Gain" across scenarios. How much real wealth is preserved by the accelerated payments?
-    3. **Long-Term (20 Years):** Focus on wealth building. Compare the massive difference in True Net Gain.
-    4. **Strategic Recommendation:** Suggest an optimal strategy based on the "True Net Gain" analysis. Should they put more down now? Or focus on the aggressive repayment?
+    Return JSON with exactly these three parts. Use plain language. Do not use markdown, headings, bullet points or bold.
+    1. "timeline": exactly 3 items, in this order: the 7-year, 13-year and 20-year sales. Each has "year" (7, 13 or 20), "subtitle" (a short phrase of six words or fewer that sums up the three plans at that point) and "takeaway" (one sentence on the best plan's True Net Gain and whether the sale is really a profit).
+    2. "bottomLine": one sentence in two parts. "lead" is the opening clause. "emphasis" is the closing clause and states the key result, such as which plan pulls ahead and by how much.
+    3. "fullAnalysis": 3 or 4 items, each with "label" and "text". Use the labels "Short-term sale (7 years)", "Mid-term (13 years)", "Long term (20 years)" and "Strategy". The Strategy item asks whether more down payment or accelerated repayment is the better use of money, based on the True Net Gain figures.
 
-    Keep descriptions concise but strictly data-driven based on the provided True Net Gain figures.
-  `;
+    Keep every statement strictly data-driven, based on the provided True Net Gain figures.
+`;
 
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              title: {
-                type: Type.STRING,
-                description: "Header for the insight (e.g., '7-Year True Gain Analysis')"
-              },
-              tip: {
-                type: Type.STRING,
-                description: "The detailed analysis."
-              }
-            }
-          }
-        }
-      }
-    });
-    
-    return response.text;
-  } catch (error) {
-    console.error("Error fetching Gemini insights:", error);
-    return JSON.stringify([
-      {
-        title: "Analysis Unavailable",
-        tip: "Could not generate financial analysis at this time."
-      }
-    ]);
-  }
+export async function getMortgageInsights(
+    params: MortgageParams,
+    results: CalculationResults,
+    appreciationRate: number,
+    includeCarryingCosts: boolean = false
+): Promise<MortgageInsights> {
+    const timeline = getTimelineSnapshots(results, params, appreciationRate, includeCarryingCosts);
+
+    if (!process.env.API_KEY) {
+        console.error("API_KEY environment variable not set.");
+        return buildFallbackInsights(timeline);
+    }
+
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: buildInsightsPrompt(params, timeline, appreciationRate, includeCarryingCosts),
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        timeline: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    year: { type: Type.INTEGER, description: "7, 13 or 20" },
+                                    subtitle: { type: Type.STRING, description: "Six words or fewer" },
+                                    takeaway: { type: Type.STRING, description: "One sentence" },
+                                },
+                                required: ["year", "subtitle", "takeaway"],
+                            },
+                        },
+                        bottomLine: {
+                            type: Type.OBJECT,
+                            properties: {
+                                lead: { type: Type.STRING, description: "Opening clause" },
+                                emphasis: { type: Type.STRING, description: "Closing clause with the key result" },
+                            },
+                            required: ["lead", "emphasis"],
+                        },
+                        fullAnalysis: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    label: { type: Type.STRING },
+                                    text: { type: Type.STRING },
+                                },
+                                required: ["label", "text"],
+                            },
+                        },
+                    },
+                    required: ["timeline", "bottomLine", "fullAnalysis"],
+                },
+            },
+        });
+        return parseMortgageInsights(response.text, timeline);
+    } catch (error) {
+        console.error("Error fetching Gemini insights:", error);
+        return buildFallbackInsights(timeline);
+    }
 }

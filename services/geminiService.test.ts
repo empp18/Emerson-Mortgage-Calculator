@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { calculateAllScenarios } from './mortgageCalculator';
-import { getSnapshotAtYear, getScenarioSnapshots, type CarryingCosts } from './geminiService';
+import {
+  getSnapshotAtYear,
+  getScenarioSnapshots,
+  buildFallbackInsights,
+  parseMortgageInsights,
+  type CarryingCosts,
+  type InsightYear,
+  type SnapshotMetrics,
+  type TimelinePoint,
+} from './geminiService';
 import type { MortgageParams } from '../types';
 
 const START = new Date(2026, 9, 9);
@@ -125,5 +134,112 @@ describe('getScenarioSnapshots', () => {
     expect(off.monthly.carryingCostsToDate).toBe(0);
     expect(on.monthly.carryingCostsToDate).toBeCloseTo((6000 + 1800 + 1200) * 13, 2);
     expect(on.biWeekly.trueNetGain).toBeCloseTo(off.biWeekly.trueNetGain - on.biWeekly.carryingCostsToDate, 2);
+  });
+});
+
+describe('AI analysis fallback and parsing', () => {
+  const snapshot = (trueNetGain: number): SnapshotMetrics => ({
+    year: 7,
+    futureValue: 0,
+    remainingBalance: 0,
+    totalInterestToDate: 0,
+    closingCosts: 0,
+    netProceeds: 0,
+    principalPaidToDate: 0,
+    carryingCostsToDate: 0,
+    trueGain: trueNetGain,
+    trueNetGain,
+  });
+
+  // Gains for the monthly, bi-weekly and bi-weekly v2.0 plans at one sale point
+  const point = (year: InsightYear, monthly: number, biWeekly: number, biWeeklyExtra: number): TimelinePoint => ({
+    year,
+    plans: { monthly: snapshot(monthly), biWeekly: snapshot(biWeekly), biWeeklyExtra: snapshot(biWeeklyExtra) },
+  });
+
+  const allNegative: TimelinePoint[] = [
+    point(7, -90000, -80000, -62000),
+    point(13, -70000, -55000, -40000),
+    point(20, -30000, -10000, -5000),
+  ];
+  const allPositive: TimelinePoint[] = [
+    point(7, 20000, 25000, 30000),
+    point(13, 80000, 90000, 101000),
+    point(20, 150000, 160000, 170000),
+  ];
+  const mixed: TimelinePoint[] = [
+    point(7, -10000, 5000, 3000),
+    point(13, 40000, 60000, 70000),
+    point(20, 100000, 120000, 130000),
+  ];
+
+  describe('buildFallbackInsights', () => {
+    it('describes an all-negative timeline as losses and keeps the best plan', () => {
+      const fallback = buildFallbackInsights(allNegative);
+      expect(fallback.timeline.map(t => t.year)).toEqual([7, 13, 20]);
+      expect(fallback.timeline.every(t => t.subtitle === 'All plans lose money')).toBe(true);
+      expect(fallback.timeline[0].takeaway).toBe('Bi-Weekly v2.0 loses the least, at −$62k true net gain.');
+      expect(fallback.bottomLine.lead).toBe('None of the plans come out ahead within 20 years, ');
+      expect(fallback.fullAnalysis).toHaveLength(4);
+      expect(fallback.fullAnalysis[3].label).toBe('Strategy');
+    });
+
+    it('describes an all-positive timeline as gains and names the first year a plan is ahead', () => {
+      const fallback = buildFallbackInsights(allPositive);
+      expect(fallback.timeline.every(t => t.subtitle === 'All plans gain')).toBe(true);
+      expect(fallback.timeline[1].takeaway).toBe('Bi-Weekly v2.0 comes out best, at +$101k true net gain.');
+      expect(fallback.bottomLine.lead).toBe('The earliest sale point where a plan comes out ahead is year 7, ');
+      expect(fallback.bottomLine.emphasis).toBe('Bi-Weekly v2.0 nets +$30k.');
+    });
+
+    it('marks a mixed timeline as mixed and finds the first year a plan turns positive', () => {
+      const fallback = buildFallbackInsights(mixed);
+      expect(fallback.timeline[0].subtitle).toBe('Results are mixed');
+      expect(fallback.timeline[1].subtitle).toBe('All plans gain');
+      expect(fallback.bottomLine.lead).toBe('The earliest sale point where a plan comes out ahead is year 7, ');
+    });
+  });
+
+  describe('parseMortgageInsights', () => {
+    const valid = {
+      timeline: [
+        { year: 7, subtitle: ' Results are mixed ', takeaway: 'Bi-Weekly is ahead.' },
+        { year: 13, subtitle: 'All plans gain', takeaway: 'Gains are real.' },
+        { year: 20, subtitle: 'All plans gain', takeaway: 'Wealth builds.' },
+      ],
+      bottomLine: { lead: 'Selling later pays,', emphasis: 'v2.0 leads by $40k.' },
+      fullAnalysis: [
+        { label: 'Short-term sale (7 years)', text: 'Short.' },
+        { label: 'Mid-term (13 years)', text: 'Mid.' },
+        { label: 'Long term (20 years)', text: 'Long.' },
+      ],
+    };
+
+    it('returns the parsed reply for valid JSON, with text trimmed', () => {
+      const parsed = parseMortgageInsights(JSON.stringify(valid), mixed);
+      expect(parsed.timeline[0]).toEqual({ year: 7, subtitle: 'Results are mixed', takeaway: 'Bi-Weekly is ahead.' });
+      expect(parsed.bottomLine).toEqual({ lead: 'Selling later pays,', emphasis: 'v2.0 leads by $40k.' });
+      expect(parsed.fullAnalysis).toHaveLength(3);
+    });
+
+    it('falls back when the JSON is malformed', () => {
+      expect(parseMortgageInsights('{"timeline": [', mixed)).toEqual(buildFallbackInsights(mixed));
+      expect(parseMortgageInsights('not json at all', mixed)).toEqual(buildFallbackInsights(mixed));
+    });
+
+    it('falls back when there is no text', () => {
+      expect(parseMortgageInsights(undefined, mixed)).toEqual(buildFallbackInsights(mixed));
+      expect(parseMortgageInsights('', mixed)).toEqual(buildFallbackInsights(mixed));
+    });
+
+    it('falls back when a required field is missing', () => {
+      const withoutBottomLine = { ...valid, bottomLine: undefined };
+      const withoutTakeaway = { ...valid, timeline: [{ year: 7, subtitle: 'x' }, valid.timeline[1], valid.timeline[2]] };
+      const withoutYear20 = { ...valid, timeline: valid.timeline.slice(0, 2) };
+      const emptyEmphasis = { ...valid, bottomLine: { lead: 'Lead', emphasis: '  ' } };
+      for (const reply of [withoutBottomLine, withoutTakeaway, withoutYear20, emptyEmphasis]) {
+        expect(parseMortgageInsights(JSON.stringify(reply), mixed)).toEqual(buildFallbackInsights(mixed));
+      }
+    });
   });
 });

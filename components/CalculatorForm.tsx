@@ -230,7 +230,8 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, app
           <TextField id="interestRate" label="Interest rate" suffix="%" value={interestRate} onChange={setInterestRate} />
           <div className="min-w-0">
             <span className={labelClass}>Loan term</span>
-            <div className="flex rounded-[10px] border border-brand-line bg-white p-[3px]">
+            {/* Same rendered height as the interest rate input: 11px padding + 22.5px line + 1px border, top and bottom */}
+            <div className="flex h-[46.5px] rounded-[10px] border border-brand-line bg-white p-[3px]">
               {[...TERM_OPTIONS, 'Other'].map(option => {
                 const selected = option === 'Other' ? showCustomTerm : !showCustomTerm && loanTerm === option;
                 const label = option === '30' ? '30 yr' : option;
@@ -244,7 +245,7 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onCalculate, app
                       setShowCustomTerm(false);
                       setLoanTerm(option);
                     }}
-                    className={`flex-1 whitespace-nowrap rounded-[8px] px-0.5 py-[7px] text-[12.5px] ${selected ? 'bg-brand-primary font-semibold text-white' : 'text-brand-muted hover:text-brand-ink'}`}
+                    className={`flex flex-1 items-center justify-center whitespace-nowrap rounded-[8px] px-0.5 text-[12.5px] ${selected ? 'bg-brand-primary font-semibold text-white' : 'text-brand-muted hover:text-brand-ink'}`}
                   >
                     {label}
                   </button>
