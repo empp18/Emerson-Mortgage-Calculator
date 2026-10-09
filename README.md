@@ -24,7 +24,8 @@ Type-check with `npx tsc --noEmit`.
 
 ## Project layout
 
-- `services/`: the maths. `mortgageCalculator.ts` builds the amortization schedules. `geminiService.ts` computes sale-side figures (closing costs, net proceeds, true gain) and holds the AI analysis prompt and its non-AI fallback text.
+- `services/`: the maths. `mortgageCalculator.ts` builds the amortization schedules. `geminiService.ts` computes sale-side figures (closing costs, net proceeds, true gain), calls `/api/insights` and holds the non-AI fallback text. `insightsPrompt.ts` builds the AI prompt.
+- `api/insights.ts`: Vercel function that validates the calculator inputs, reruns the calculator, builds the prompt and calls Gemini.
 - `components/`: the UI. `CalculatorForm` is the input panel, `ResultsOverview` and `ResultHeadline` are the summary, `FinancialBreakdown` shows the ledger, and `GeminiInsights` shows the written analysis.
 - `App.tsx`: page state, the payment details and schedule section, and PDF export.
 - `types.ts`: shared types for parameters, schedules and results.
@@ -32,4 +33,6 @@ Type-check with `npx tsc --noEmit`.
 
 ## Gemini key
 
-The Gemini key must stay on the server. Anything in the browser bundle is public. Right now `vite.config.ts` inlines `GEMINI_API_KEY` into the client build, so treat any key used by this build as exposed until the AI call moves behind a server endpoint. Do not add the key to a `VITE_` variable or to `.env.local` for the browser.
+The Gemini key lives only on the server. `api/insights.ts` reads `GEMINI_API_KEY` from the Vercel project's environment variables; the browser never sees it. The endpoint accepts calculator inputs only and builds the prompt itself, so it cannot be used as a general Gemini proxy.
+
+Locally, `npm run dev` has no `/api` route, so the analysis shows the numbers-only summary. Use `vercel dev` (with the key in your Vercel development environment) to exercise the real endpoint. Never put the key in a `VITE_` variable or in client code.
