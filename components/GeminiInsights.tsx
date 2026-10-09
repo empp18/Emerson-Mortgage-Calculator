@@ -155,7 +155,7 @@ export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results,
           <div className="mt-6 border-t border-brand-line pt-5">
             <p className="text-[12px] font-bold uppercase tracking-widest text-brand-muted">The bottom line</p>
             <p className="mt-2 font-serif text-[20px] font-semibold leading-snug text-brand-ink md:text-[24px]">
-              {analysis.insights.bottomLine.lead}
+              {analysis.insights.bottomLine.lead.trimEnd()}{' '}
               <span className="text-[#1E7B4F]">{analysis.insights.bottomLine.emphasis}</span>
             </p>
           </div>
@@ -173,7 +173,9 @@ export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results,
           </details>
 
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-brand-line pt-4 text-[12px] text-brand-muted">
-            <span>Written by AI from your numbers · {analysis.generatedOn}</span>
+            <span>
+              {analysis.insights.source === 'ai' ? 'Written by AI from your numbers' : 'Summary built from your numbers (AI not available)'} · {analysis.generatedOn}
+            </span>
             <button type="button" onClick={generate} className="rounded-[8px] border border-brand-line px-3 py-1.5 text-[12.5px] font-semibold text-brand-primary transition hover:bg-brand-light">
               Regenerate
             </button>

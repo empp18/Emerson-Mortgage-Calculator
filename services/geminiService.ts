@@ -165,6 +165,7 @@ export interface MortgageInsights {
     timeline: { year: InsightYear; subtitle: string; takeaway: string }[];
     bottomLine: { lead: string; emphasis: string }; // one sentence; emphasis is the closing clause
     fullAnalysis: { label: string; text: string }[];
+    source: 'ai' | 'fallback'; // fallback text is built from the numbers, not written by the AI
 }
 
 // -$62k / +$101k, with a typographic minus. Shared by the analysis card and the fallback text.
@@ -225,11 +226,11 @@ export function buildFallbackInsights(timeline: TimelinePoint[]): MortgageInsigh
     const firstAhead = timeline.find(point => bestPlan(point).gain > 0);
     const bottomLine = firstAhead
         ? {
-            lead: `The earliest sale point where a plan comes out ahead is year ${firstAhead.year}, `,
+            lead: `A plan first comes out ahead if you sell at ${firstAhead.year} years:`,
             emphasis: `${PLAN_NAMES[bestPlan(firstAhead).key]} nets ${formatSignedThousands(bestPlan(firstAhead).gain)}.`,
         }
         : {
-            lead: `None of the plans come out ahead within ${last.year} years, `,
+            lead: `None of the plans come out ahead within ${last.year} years;`,
             emphasis: `the best one still shows ${formatSignedThousands(bestAtLast.gain)}.`,
         };
 
@@ -237,6 +238,7 @@ export function buildFallbackInsights(timeline: TimelinePoint[]): MortgageInsigh
         timeline: rows.map(({ year, subtitle, takeaway }) => ({ year, subtitle, takeaway })),
         bottomLine,
         fullAnalysis,
+        source: 'fallback',
     };
 }
 
@@ -283,6 +285,7 @@ export function parseMortgageInsights(text: string | null | undefined, timeline:
         timeline: parsedTimeline,
         bottomLine: { lead: rawBottomLine.lead.trim(), emphasis: rawBottomLine.emphasis.trim() },
         fullAnalysis,
+        source: 'ai',
     };
 }
 

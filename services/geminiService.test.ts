@@ -179,7 +179,8 @@ describe('AI analysis fallback and parsing', () => {
       expect(fallback.timeline.map(t => t.year)).toEqual([7, 13, 20]);
       expect(fallback.timeline.every(t => t.subtitle === 'All plans lose money')).toBe(true);
       expect(fallback.timeline[0].takeaway).toBe('Bi-Weekly v2.0 loses the least, at −$62k true net gain.');
-      expect(fallback.bottomLine.lead).toBe('None of the plans come out ahead within 20 years, ');
+      expect(fallback.bottomLine.lead).toBe('None of the plans come out ahead within 20 years;');
+      expect(fallback.source).toBe('fallback');
       expect(fallback.fullAnalysis).toHaveLength(4);
       expect(fallback.fullAnalysis[3].label).toBe('Strategy');
     });
@@ -188,7 +189,7 @@ describe('AI analysis fallback and parsing', () => {
       const fallback = buildFallbackInsights(allPositive);
       expect(fallback.timeline.every(t => t.subtitle === 'All plans gain')).toBe(true);
       expect(fallback.timeline[1].takeaway).toBe('Bi-Weekly v2.0 comes out best, at +$101k true net gain.');
-      expect(fallback.bottomLine.lead).toBe('The earliest sale point where a plan comes out ahead is year 7, ');
+      expect(fallback.bottomLine.lead).toBe('A plan first comes out ahead if you sell at 7 years:');
       expect(fallback.bottomLine.emphasis).toBe('Bi-Weekly v2.0 nets +$30k.');
     });
 
@@ -196,7 +197,7 @@ describe('AI analysis fallback and parsing', () => {
       const fallback = buildFallbackInsights(mixed);
       expect(fallback.timeline[0].subtitle).toBe('Results are mixed');
       expect(fallback.timeline[1].subtitle).toBe('All plans gain');
-      expect(fallback.bottomLine.lead).toBe('The earliest sale point where a plan comes out ahead is year 7, ');
+      expect(fallback.bottomLine.lead).toBe('A plan first comes out ahead if you sell at 7 years:');
     });
   });
 
@@ -220,6 +221,7 @@ describe('AI analysis fallback and parsing', () => {
       expect(parsed.timeline[0]).toEqual({ year: 7, subtitle: 'Results are mixed', takeaway: 'Bi-Weekly is ahead.' });
       expect(parsed.bottomLine).toEqual({ lead: 'Selling later pays,', emphasis: 'v2.0 leads by $40k.' });
       expect(parsed.fullAnalysis).toHaveLength(3);
+      expect(parsed.source).toBe('ai');
     });
 
     it('falls back when the JSON is malformed', () => {
