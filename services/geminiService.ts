@@ -1,5 +1,5 @@
 
-import type { MortgageParams, CalculationResults, AmortizationEntry } from '../types';
+import type { MortgageParams, CalculationResults, AmortizationEntry } from '../types.js';
 
 export interface SnapshotMetrics {
     year: number;

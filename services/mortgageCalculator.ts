@@ -1,4 +1,4 @@
-import type { MortgageParams, AmortizationEntry, MortgageSummary, CalculationResults, AnnualSummaryEntry } from '../types';
+import type { MortgageParams, AmortizationEntry, MortgageSummary, CalculationResults, AnnualSummaryEntry } from '../types.js';
 
 const PMI_LTV_CUTOFF = 0.8; // LTV ratio at which PMI is removed
 

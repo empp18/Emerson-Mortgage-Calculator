@@ -1,5 +1,5 @@
-import type { MortgageParams } from '../types';
-import type { TimelinePoint } from './geminiService';
+import type { MortgageParams } from '../types.js';
+import type { TimelinePoint } from './geminiService.js';
 
 // Built on the server only, so callers cannot send their own prompt to Gemini
 export const buildInsightsPrompt = (params: MortgageParams, timeline: TimelinePoint[], appreciationRate: number, includeCarryingCosts: boolean, closingCostRate: number) => `

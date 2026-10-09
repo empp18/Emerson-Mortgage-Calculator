@@ -1,8 +1,8 @@
 import { GoogleGenAI, Type } from '@google/genai';
-import { calculateAllScenarios } from '../services/mortgageCalculator';
-import { getTimelineSnapshots } from '../services/geminiService';
-import { buildInsightsPrompt } from '../services/insightsPrompt';
-import type { MortgageParams } from '../types';
+import { calculateAllScenarios } from '../services/mortgageCalculator.js';
+import { getTimelineSnapshots } from '../services/geminiService.js';
+import { buildInsightsPrompt } from '../services/insightsPrompt.js';
+import type { MortgageParams } from '../types.js';
 
 // Vercel function: POST /api/insights. Holds the Gemini key; the browser only sends calculator inputs.
 
