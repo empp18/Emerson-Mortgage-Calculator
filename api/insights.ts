@@ -42,7 +42,7 @@ const RESPONSE_SCHEMA = {
 };
 
 // Tried in order: the second is used only if the first call fails (e.g. Google retires or limits a model)
-const MODELS = ['gemini-3.6-flash', 'gemini-3.8-flash'];
+const MODELS = ['gemini-3.5-flash', 'gemini-3.8-flash'];
 
 const FREQUENCIES = ['weekly', 'bi-weekly', 'monthly', 'annually'] as const;
 const MODES = ['monthly', 'biWeekly', 'biWeeklyWithExtra', 'all'] as const;
