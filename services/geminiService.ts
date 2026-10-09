@@ -1,6 +1,5 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
-import type { MortgageParams, CalculationResults, AmortizationEntry } from '../types';
+import type { MortgageParams, CalculationResults, AmortizationEntry } from '../types.js';
 
 export interface SnapshotMetrics {
     year: number;
@@ -9,8 +8,17 @@ export interface SnapshotMetrics {
     totalInterestToDate: number;
     closingCosts: number;
     netProceeds: number;
+    principalPaidToDate: number;
+    carryingCostsToDate: number; // taxes, insurance, HOA and PMI paid so far (0 unless opted in)
     trueGain: number;
     trueNetGain: number;
+}
+
+// Ownership costs beyond the loan itself. Passing this to getSnapshotAtYear opts in to counting them.
+export interface CarryingCosts {
+    propertyTaxes: number;       // annual
+    homeownersInsurance: number; // annual
+    hoaDues: number;             // monthly
 }
 
 // Helper to get data at a specific year
@@ -20,23 +28,32 @@ export function getSnapshotAtYear(
     initialHomePrice: number, 
     downPayment: number,
     isBiWeekly: boolean,
-    appreciationRate: number = 3.5
+    appreciationRate: number = 3.5,
+    carrying?: CarryingCosts,
+    closingCostRate: number = 6 // percent of the sale price, paid at closing
 ): SnapshotMetrics {
     const rateDecimal = appreciationRate / 100;
     const growthFactor = Math.pow(1 + rateDecimal, year);
+    const closingShare = closingCostRate / 100;
+    const keepShare = 1 - closingShare;
 
     // Safety check for empty schedules (e.g. 100% down payment)
     if (!schedule || schedule.length === 0) {
         const futureVal = initialHomePrice * growthFactor;
+        const carryingCostsToDate = carrying
+            ? (carrying.propertyTaxes + carrying.homeownersInsurance + carrying.hoaDues * 12) * year
+            : 0;
         return {
             year,
             futureValue: futureVal,
             remainingBalance: 0,
             totalInterestToDate: 0,
-            closingCosts: futureVal * 0.08,
-            netProceeds: futureVal * 0.92,
-            trueGain: (futureVal * 0.92) - downPayment,
-            trueNetGain: (futureVal * 0.92) - downPayment
+            closingCosts: futureVal * closingShare,
+            netProceeds: futureVal * keepShare,
+            principalPaidToDate: 0,
+            carryingCostsToDate,
+            trueGain: (futureVal * keepShare) - initialHomePrice,
+            trueNetGain: (futureVal * keepShare) - initialHomePrice - carryingCostsToDate
         };
     }
 
@@ -52,7 +69,7 @@ export function getSnapshotAtYear(
 
     // Appreciation Calc
     const futureValue = initialHomePrice * growthFactor;
-    const closingCosts = futureValue * 0.08; // 8% fees
+    const closingCosts = futureValue * closingShare; // agent fees and transfer taxes
     
     // If the loan was paid off before this year, balance is 0.
     // We check if the last entry in the schedule happened BEFORE our target year.
@@ -67,22 +84,33 @@ export function getSnapshotAtYear(
     // Calculate total interest paid up to this point
     // If paid off early, we sum ALL interest. If not, we sum up to the target entry.
     let totalInterestToDate = 0;
+    let pmiToDate = 0;
     const limitPeriod = paidOffEarly ? lastEntry.month : entry.month;
     
     for(const e of schedule) {
         if (e.month <= limitPeriod) {
             totalInterestToDate += e.interest;
+            // Schedule rows carry PMI inside totalPayment; recover it by subtraction
+            pmiToDate += e.totalPayment - e.principal - e.extraPayment - e.interest;
         } else {
             break;
         }
     }
 
-    // True Gain: Net Proceeds - Initial Investment (Down Payment)
-    const trueGain = netProceeds - downPayment;
+    // Taxes, insurance and HOA are owed for the whole holding period, even if the loan is paid off early
+    const carryingCostsToDate = carrying
+        ? (carrying.propertyTaxes + carrying.homeownersInsurance + carrying.hoaDues * 12) * year + pmiToDate
+        : 0;
 
-    // True Net Gain: The real profit/loss after accounting for the cost of borrowing
-    // (Net Proceeds - Total Interest Paid - Down Payment)
-    const trueNetGain = netProceeds - totalInterestToDate - downPayment;
+    // Principal is cash out of the owner's pocket that the sale only hands back, so it is not gain.
+    const principalPaidToDate = (initialHomePrice - downPayment) - remainingBalance;
+
+    // True Gain: cash received minus every dollar put in toward the home (down payment + principal paid).
+    // Equivalent to (sale price - closing costs) - original price.
+    const trueGain = netProceeds - downPayment - principalPaidToDate;
+
+    // True Net Gain: True Gain after the cost of borrowing (interest) and, if opted in, carrying costs.
+    const trueNetGain = trueGain - totalInterestToDate - carryingCostsToDate;
 
     return {
         year,
@@ -91,116 +119,231 @@ export function getSnapshotAtYear(
         totalInterestToDate,
         closingCosts,
         netProceeds,
+        principalPaidToDate,
+        carryingCostsToDate,
         trueGain,
         trueNetGain
     };
 }
 
-export async function getMortgageInsights(params: MortgageParams, results: CalculationResults, appreciationRate: number): Promise<string> {
-  if (!process.env.API_KEY) {
-    console.error("API_KEY environment variable not set.");
-    return JSON.stringify([
-        {
-          title: "API Key Not Configured",
-          tip: "Please configure your Gemini API key as an environment variable (API_KEY) to receive AI-powered mortgage tips."
-        }
-      ]);
-  }
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-  const timelines = [7, 13, 20];
-  const snapshots = timelines.map(year => {
-      return {
-          year,
-          monthly: getSnapshotAtYear(results.monthly.schedule, year, params.homePrice, params.downPayment, false, appreciationRate),
-          biWeekly: getSnapshotAtYear(results.biWeekly.schedule, year, params.homePrice, params.downPayment, true, appreciationRate),
-          biWeeklyExtra: getSnapshotAtYear(results.biWeeklyWithExtra.schedule, year, params.homePrice, params.downPayment, true, appreciationRate)
-      };
-  });
+// The three payment plans compared throughout the app, at one holding period
+export function getScenarioSnapshots(
+    results: CalculationResults,
+    params: MortgageParams,
+    year: number,
+    appreciationRate: number,
+    includeCarryingCosts: boolean,
+    closingCostRate: number = 6
+) {
+    const carrying = includeCarryingCosts
+        ? { propertyTaxes: params.propertyTaxes, homeownersInsurance: params.homeownersInsurance, hoaDues: params.hoaDues }
+        : undefined;
+    return {
+        monthly: getSnapshotAtYear(results.monthly.schedule, year, params.homePrice, params.downPayment, false, appreciationRate, carrying, closingCostRate),
+        biWeekly: getSnapshotAtYear(results.biWeekly.schedule, year, params.homePrice, params.downPayment, true, appreciationRate, carrying, closingCostRate),
+        biWeeklyExtra: getSnapshotAtYear(results.biWeeklyWithExtra.schedule, year, params.homePrice, params.downPayment, true, appreciationRate, carrying, closingCostRate),
+    };
+}
 
-  const prompt = `
-    You are an expert real estate financial analyst. Analyze the following mortgage scenarios to provide high-level strategic advice.
-    
-    **Core Philosophy:**
-    When analyzing home-sale outcomes, it is important to recognize that the net proceeds a homeowner receives at closing do not necessarily represent their true financial gain. Homeowners often see a large check when they sell and assume this amount is ‘profit,’ but this is misleading. Mortgage interest is a real cost — money that never comes back — and in many cases it can exceed the amount of appreciation gained during ownership. This means a homeowner can walk away with significant equity at sale while actually experiencing a financial loss once interest costs are accounted for.
+export type ScenarioSnapshots = ReturnType<typeof getScenarioSnapshots>;
+export type PlanKey = keyof ScenarioSnapshots;
 
-    Therefore, you must calculate not only equity and net sale proceeds, but also total interest paid. You must then evaluate the "True Gain" and "True Net Gain":
-    
-    - **Net Proceeds**: Sale Price - Closing Costs (8%) - Remaining Mortgage Balance.
-    - **True Gain**: Net Proceeds - Original Down Payment.
-    - **True Net Gain**: Net Proceeds - Total Interest Paid - Original Down Payment.
-    
-    This allows you to accurately determine whether the homeowner truly profited or incurred a loss, even in cases where the sale appears profitable on the surface.
-    
-    **Loan Details:**
-    - Original Price: $${params.homePrice.toLocaleString()}
-    - Down Payment: $${params.downPayment.toLocaleString()}
-    - Rate: ${params.interestRate}%
-    - Assumed Appreciation Rate: ${appreciationRate}%
-    
-    **Financial Analysis at Median Selling Timelines (assuming ${appreciationRate}% appreciation & 8% Closing Costs):**
-    
-    ${snapshots.map(s => `
-    --- TIMELINE: ${s.year} YEARS ---
-    1. Monthly Scenario:
-       - Net Proceeds (Check at Closing): $${Math.round(s.monthly.netProceeds).toLocaleString()}
-       - Total Interest Cost: $${Math.round(s.monthly.totalInterestToDate).toLocaleString()}
-       - True Net Gain (Real Profit/Loss): $${Math.round(s.monthly.trueNetGain).toLocaleString()}
-    
-    2. Bi-Weekly Scenario:
-       - Net Proceeds: $${Math.round(s.biWeekly.netProceeds).toLocaleString()}
-       - Total Interest Cost: $${Math.round(s.biWeekly.totalInterestToDate).toLocaleString()}
-       - True Net Gain: $${Math.round(s.biWeekly.trueNetGain).toLocaleString()}
-       
-    3. Bi-Weekly v2.0 (Accelerated):
-       - Net Proceeds: $${Math.round(s.biWeeklyExtra.netProceeds).toLocaleString()}
-       - Total Interest Cost: $${Math.round(s.biWeeklyExtra.totalInterestToDate).toLocaleString()}
-       - True Net Gain: $${Math.round(s.biWeeklyExtra.trueNetGain).toLocaleString()}
-    `).join('\n')}
+// The sale points the analysis compares
+export const INSIGHT_YEARS = [7, 13, 20] as const;
+export type InsightYear = (typeof INSIGHT_YEARS)[number];
 
-    **Task:**
-    Provide 4 distinct insights in JSON format.
-    1. **Short-Term Sale (7 Years):** Focus on True Net Gain. Are they actually profitable after interest and costs? Or is the "profit" an illusion?
-    2. **Mid-Term Sale (13 Years):** Compare the "True Net Gain" across scenarios. How much real wealth is preserved by the accelerated payments?
-    3. **Long-Term (20 Years):** Focus on wealth building. Compare the massive difference in True Net Gain.
-    4. **Strategic Recommendation:** Suggest an optimal strategy based on the "True Net Gain" analysis. Should they put more down now? Or focus on the aggressive repayment?
+export const PLAN_KEYS: PlanKey[] = ['monthly', 'biWeekly', 'biWeeklyExtra'];
+export const PLAN_NAMES: Record<PlanKey, string> = {
+    monthly: 'Monthly',
+    biWeekly: 'Bi-Weekly',
+    biWeeklyExtra: 'Bi-Weekly v2.0',
+};
 
-    Keep descriptions concise but strictly data-driven based on the provided True Net Gain figures.
-  `;
+export interface TimelinePoint {
+    year: InsightYear;
+    plans: ScenarioSnapshots;
+}
 
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              title: {
-                type: Type.STRING,
-                description: "Header for the insight (e.g., '7-Year True Gain Analysis')"
-              },
-              tip: {
-                type: Type.STRING,
-                description: "The detailed analysis."
-              }
-            }
-          }
-        }
-      }
+export interface MortgageInsights {
+    timeline: { year: InsightYear; subtitle: string; takeaway: string }[];
+    bottomLine: { lead: string; emphasis: string }; // one sentence; emphasis is the closing clause
+    fullAnalysis: { label: string; text: string }[];
+    source: 'ai' | 'fallback'; // fallback text is built from the numbers, not written by the AI
+    unavailableReason?: string; // why the AI was not used, when known
+}
+
+// -$62k / +$101k, with a typographic minus. Shared by the analysis card and the fallback text.
+export const formatSignedThousands = (value: number): string => {
+    const thousands = Math.round(Math.abs(value) / 1000);
+    if (thousands === 0) return '$0';
+    return `${value < 0 ? '−' : '+'}$${thousands}k`;
+};
+
+// Dot colour for one sale point: red when every plan loses and they lose about the same,
+// green when every plan gains, gold otherwise.
+export const dotColor = (gains: number[]): string => {
+    const lowest = Math.min(...gains);
+    const highest = Math.max(...gains);
+    if (gains.every(g => g > 0)) return '#1E7B4F';
+    if (gains.every(g => g < 0) && highest - lowest < 0.25 * -lowest) return '#B42318';
+    return '#A67700';
+};
+
+// The plain-language sale sentence shown under the calculator and at the top of the PDF
+export const describeSale = (sale: SnapshotMetrics, includeCarryingCosts: boolean): string => {
+    const money = (value: number) =>
+        new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Math.abs(value));
+    const closing = sale.netProceeds >= 0
+        ? `you would get ${money(sale.netProceeds)} at closing`
+        : `you would owe ${money(sale.netProceeds)} at closing`;
+    const costs = includeCarryingCosts ? 'interest and ownership costs' : 'interest';
+    const outcome = sale.trueNetGain < 0
+        ? `you would still be ${money(sale.trueNetGain)} behind`
+        : `you would be ${money(sale.trueNetGain)} ahead`;
+    return `If you sold in seven years, ${closing}. After ${costs}, ${outcome}.`;
+};
+
+export function getTimelineSnapshots(
+    results: CalculationResults,
+    params: MortgageParams,
+    appreciationRate: number,
+    includeCarryingCosts: boolean,
+    closingCostRate: number = 6
+): TimelinePoint[] {
+    return INSIGHT_YEARS.map(year => ({
+        year,
+        plans: getScenarioSnapshots(results, params, year, appreciationRate, includeCarryingCosts, closingCostRate),
+    }));
+}
+
+const bestPlan = (point: TimelinePoint) => {
+    const gains = PLAN_KEYS.map(key => ({ key, gain: point.plans[key].trueNetGain }));
+    return gains.reduce((best, current) => (current.gain > best.gain ? current : best));
+};
+
+// Deterministic analysis from the numbers alone. Used when the AI is unavailable or its reply is unusable.
+export function buildFallbackInsights(timeline: TimelinePoint[]): MortgageInsights {
+    const rows = timeline.map(point => {
+        const gains = PLAN_KEYS.map(key => point.plans[key].trueNetGain);
+        const best = bestPlan(point);
+        const subtitle = gains.every(g => g < 0)
+            ? 'All plans lose money'
+            : gains.every(g => g > 0)
+                ? 'All plans gain'
+                : 'Results are mixed';
+        const verdict = best.gain < 0 ? 'loses the least' : 'comes out best';
+        const takeaway = `${PLAN_NAMES[best.key]} ${verdict}, at ${formatSignedThousands(best.gain)} true net gain.`;
+        return {
+            year: point.year,
+            subtitle,
+            takeaway,
+            range: `The plans sit between ${formatSignedThousands(Math.min(...gains))} and ${formatSignedThousands(Math.max(...gains))}.`,
+        };
     });
-    
-    return response.text;
-  } catch (error) {
-    console.error("Error fetching Gemini insights:", error);
-    return JSON.stringify([
-      {
-        title: "Analysis Unavailable",
-        tip: "Could not generate financial analysis at this time."
-      }
-    ]);
-  }
+
+    const labels = ['Short-term sale (7 years)', 'Mid-term (13 years)', 'Long term (20 years)'];
+    const fullAnalysis = rows.map((row, i) => ({ label: labels[i], text: `${row.takeaway} ${row.range}` }));
+
+    const last = timeline[timeline.length - 1];
+    const bestAtLast = bestPlan(last);
+    const edgeOverMonthly = Math.round(Math.abs(bestAtLast.gain - last.plans.monthly.trueNetGain) / 1000);
+    fullAnalysis.push({
+        label: 'Strategy',
+        text: `At ${last.year} years, ${PLAN_NAMES[bestAtLast.key]} gives the best true net gain at ${formatSignedThousands(bestAtLast.gain)}, $${edgeOverMonthly}k more than the Monthly plan.`,
+    });
+
+    const firstAhead = timeline.find(point => bestPlan(point).gain > 0);
+    const bottomLine = firstAhead
+        ? {
+            lead: `A plan first comes out ahead if you sell at ${firstAhead.year} years:`,
+            emphasis: `${PLAN_NAMES[bestPlan(firstAhead).key]} nets ${formatSignedThousands(bestPlan(firstAhead).gain)}.`,
+        }
+        : {
+            lead: `None of the plans come out ahead within ${last.year} years;`,
+            emphasis: `the best one still shows ${formatSignedThousands(bestAtLast.gain)}.`,
+        };
+
+    return {
+        timeline: rows.map(({ year, subtitle, takeaway }) => ({ year, subtitle, takeaway })),
+        bottomLine,
+        fullAnalysis,
+        source: 'fallback',
+    };
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const isText = (value: unknown): value is string =>
+    typeof value === 'string' && value.trim().length > 0;
+
+// Turns the model's JSON reply into MortgageInsights. Any problem returns the fallback instead.
+export function parseMortgageInsights(text: string | null | undefined, timeline: TimelinePoint[]): MortgageInsights {
+    const fallback = buildFallbackInsights(timeline);
+    if (!text) return fallback;
+
+    let data: unknown;
+    try {
+        data = JSON.parse(text);
+    } catch {
+        return fallback;
+    }
+    if (!isRecord(data)) return fallback;
+
+    const rawTimeline = data.timeline;
+    if (!Array.isArray(rawTimeline)) return fallback;
+    const parsedTimeline: MortgageInsights['timeline'] = [];
+    for (const year of INSIGHT_YEARS) {
+        const item = rawTimeline.find(entry => isRecord(entry) && Number(entry.year) === year);
+        if (!isRecord(item) || !isText(item.subtitle) || !isText(item.takeaway)) return fallback;
+        parsedTimeline.push({ year, subtitle: item.subtitle.trim(), takeaway: item.takeaway.trim() });
+    }
+
+    const rawBottomLine = data.bottomLine;
+    if (!isRecord(rawBottomLine) || !isText(rawBottomLine.lead) || !isText(rawBottomLine.emphasis)) return fallback;
+
+    const rawAnalysis = data.fullAnalysis;
+    if (!Array.isArray(rawAnalysis) || rawAnalysis.length < 3 || rawAnalysis.length > 4) return fallback;
+    const fullAnalysis: MortgageInsights['fullAnalysis'] = [];
+    for (const item of rawAnalysis) {
+        if (!isRecord(item) || !isText(item.label) || !isText(item.text)) return fallback;
+        fullAnalysis.push({ label: item.label.trim(), text: item.text.trim() });
+    }
+
+    return {
+        timeline: parsedTimeline,
+        bottomLine: { lead: rawBottomLine.lead.trim(), emphasis: rawBottomLine.emphasis.trim() },
+        fullAnalysis,
+        source: 'ai',
+    };
+}
+
+// The Gemini call runs server-side (api/insights.ts) so the API key never reaches the browser.
+// Any failure, including running without the endpoint (plain `vite` dev), shows the numbers-only summary.
+export async function getMortgageInsights(
+    params: MortgageParams,
+    results: CalculationResults,
+    appreciationRate: number,
+    includeCarryingCosts: boolean = false,
+    closingCostRate: number = 6
+): Promise<MortgageInsights> {
+    const timeline = getTimelineSnapshots(results, params, appreciationRate, includeCarryingCosts, closingCostRate);
+    try {
+        const response = await fetch('/api/insights', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ params, appreciationRate, includeCarryingCosts, closingCostRate }),
+        });
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            const reason = typeof body?.reason === 'string' ? body.reason : `server responded ${response.status}`;
+            console.error('AI analysis unavailable:', reason);
+            return { ...buildFallbackInsights(timeline), unavailableReason: reason };
+        }
+        const { text } = await response.json();
+        return parseMortgageInsights(typeof text === 'string' ? text : null, timeline);
+    } catch (error) {
+        console.error('Error fetching insights:', error);
+        return { ...buildFallbackInsights(timeline), unavailableReason: 'could not reach /api/insights' };
+    }
 }

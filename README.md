@@ -1,20 +1,38 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Mortgage Amortization Planner
 
-# Run and deploy your AI Studio app
+Compares three ways of paying the same mortgage and shows what you keep if you sell after 7, 13 or 20 years.
 
-This contains everything you need to run your app locally.
+- **Monthly**: one payment a month on the standard schedule.
+- **Bi-Weekly**: half the monthly payment every two weeks, which is 13 monthly payments a year.
+- **Bi-Weekly v2.0**: bi-weekly payments plus the extra payment set in the form.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1jwSHSkGOtB4KD12a91EtehYMl2wi0Ois
+Two figures are used throughout:
 
-## Run Locally
+- **True gain**: sale price minus closing costs minus the purchase price. Principal you repaid is your own money, so it is not gain.
+- **True net gain**: true gain minus the total interest paid, and minus taxes, insurance, HOA and PMI when "Count ownership costs" is on.
 
-**Prerequisites:**  Node.js
+## Running it
 
+```sh
+npm install
+npm run dev      # local dev server on port 3000
+npm test         # vitest unit tests for the maths
+npm run build    # production build into dist/
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Type-check with `npx tsc --noEmit`.
+
+## Project layout
+
+- `services/`: the maths. `mortgageCalculator.ts` builds the amortization schedules. `geminiService.ts` computes sale-side figures (closing costs, net proceeds, true gain), calls `/api/insights` and holds the non-AI fallback text. `insightsPrompt.ts` builds the AI prompt.
+- `api/insights.ts`: Vercel function that validates the calculator inputs, reruns the calculator, builds the prompt and calls Gemini.
+- `components/`: the UI. `CalculatorForm` is the input panel, `ResultsOverview` and `ResultHeadline` are the summary, `FinancialBreakdown` shows the ledger, and `GeminiInsights` shows the written analysis.
+- `App.tsx`: page state, the payment details and schedule section, and PDF export.
+- `types.ts`: shared types for parameters, schedules and results.
+- `index.css`, `tailwind.config.js`, `postcss.config.js`: Tailwind is compiled at build time. The brand colours and fonts live in `tailwind.config.js`.
+
+## Gemini key
+
+The Gemini key lives only on the server. `api/insights.ts` reads `GEMINI_API_KEY` from the Vercel project's environment variables; the browser never sees it. The endpoint accepts calculator inputs only and builds the prompt itself, so it cannot be used as a general Gemini proxy. It asks `gemini-3.5-flash` first and falls back to `gemini-3.8-flash` if that call fails; the list is `MODELS` in `api/insights.ts`. Open `/api/insights` in a browser for a health check (whether the key is set and which models are tried).
+
+Locally, `npm run dev` has no `/api` route, so the analysis shows the numbers-only summary. Use `vercel dev` (with the key in your Vercel development environment) to exercise the real endpoint. Never put the key in a `VITE_` variable or in client code.
