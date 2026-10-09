@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { getMortgageInsights, getScenarioSnapshots } from '../services/geminiService';
+import { getMortgageInsights } from '../services/geminiService';
 import type { MortgageParams, CalculationResults } from '../types';
 
 interface GeminiInsightsProps {
@@ -10,7 +10,6 @@ interface GeminiInsightsProps {
   setIsLoading: (loading: boolean) => void;
   appreciationRate: number;
   includeCarryingCosts: boolean;
-  setIncludeCarryingCosts: (include: boolean) => void;
 }
 
 interface Insight {
@@ -71,129 +70,29 @@ const InsightCard: React.FC<{ insight: Insight }> = ({ insight }) => (
     </div>
 );
 
-const FinancialBreakdown: React.FC<{ params: MortgageParams, results: CalculationResults, appreciationRate: number, includeCarryingCosts: boolean, setIncludeCarryingCosts: (include: boolean) => void }> = ({ params, results, appreciationRate, includeCarryingCosts, setIncludeCarryingCosts }) => {
-    const [activeYear, setActiveYear] = useState(7);
-    const timelines = [7, 13, 20];
-
-    const metrics = useMemo(
-        () => getScenarioSnapshots(results, params, activeYear, appreciationRate, includeCarryingCosts),
-        [params, results, activeYear, appreciationRate, includeCarryingCosts]
-    );
-
-    const formatMoney = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
-
-    const rows = [
-        { label: `Est. Home Value (${activeYear}yrs @ ${appreciationRate}%)`, key: 'futureValue', isCurrency: true },
-        { label: '(-) Remaining Balance', key: 'remainingBalance', isCurrency: true, textRed: true },
-        { label: '(=) Gross Equity', key: 'equity', isCalculated: true, 
-          getValue: (m: any) => m.futureValue - m.remainingBalance, isCurrency: true, bold: true },
-        { label: '(-) Est. Closing Costs (8%)', key: 'closingCosts', isCurrency: true, textRed: true },
-        { label: '(=) Net Proceeds (Check at Closing)', key: 'netProceeds', isCurrency: true, bold: true, bg: 'bg-brand-primary/10' },
-        { label: '(-) Original Down Payment', key: 'downPayment', isCalculated: true, getValue: () => params.downPayment, isCurrency: true, textRed: true },
-        { label: '(-) Principal Paid Down (your own money)', key: 'principalPaidToDate', isCurrency: true, textRed: true },
-        { label: '(=) TRUE GAIN', key: 'trueGain', isCurrency: true, bold: true },
-        { label: '(-) Total Interest Paid', key: 'totalInterestToDate', isCurrency: true, textRed: true },
-        ...(includeCarryingCosts ? [{ label: '(-) Taxes, Insurance, HOA & PMI', key: 'carryingCostsToDate', isCurrency: true, textRed: true }] : []),
-        { label: '(=) TRUE NET GAIN', key: 'trueNetGain', isCurrency: true, bold: true, bg: 'bg-brand-secondary/20', textBrand: true },
-    ];
-
-    return (
-        <div className="mt-8 border-t border-white/20 pt-6">
-             <div className="flex justify-between items-center mb-4">
-                <div>
-                    <h4 className="text-xl font-bold text-white">The Math: Financial Breakdown</h4>
-                    <label className="flex items-center gap-2 mt-2 text-sm text-gray-300 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={includeCarryingCosts}
-                            onChange={(e) => setIncludeCarryingCosts(e.target.checked)}
-                            className="accent-brand-secondary"
-                        />
-                        Include property taxes, insurance, HOA &amp; PMI
-                    </label>
-                </div>
-                <div className="flex bg-brand-dark rounded-lg p-1 border border-white/20">
-                    {timelines.map(year => (
-                        <button
-                            key={year}
-                            onClick={() => setActiveYear(year)}
-                            className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${activeYear === year ? 'bg-brand-secondary text-brand-dark shadow-sm' : 'text-gray-300 hover:text-white'}`}
-                        >
-                            {year} Years
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div className="overflow-x-auto rounded-lg border border-white/20">
-                <table className="w-full text-sm text-left text-gray-200">
-                    <thead className="text-xs uppercase bg-brand-dark/50 text-brand-secondary">
-                        <tr>
-                            <th className="px-4 py-3">Metric</th>
-                            <th className="px-4 py-3 text-right">Monthly</th>
-                            <th className="px-4 py-3 text-right">Bi-Weekly</th>
-                            <th className="px-4 py-3 text-right">Bi-Weekly v2.0</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/10 bg-white/5">
-                        {rows.map((row, idx) => (
-                            <tr key={idx} className={`hover:bg-white/10 ${row.bg || ''}`}>
-                                <td className={`px-4 py-3 font-medium ${row.bold ? 'text-white' : 'text-gray-300'}`}>{row.label}</td>
-                                {['monthly', 'biWeekly', 'biWeeklyExtra'].map((scenario) => {
-                                    const m = (metrics as any)[scenario];
-                                    let val = row.isCalculated ? row.getValue!(m) : m[row.key];
-                                    const formatted = row.isCurrency ? formatMoney(val) : val;
-                                    
-                                    // Determine styling
-                                    let textColor = 'text-gray-200';
-                                    if (row.textRed) textColor = 'text-red-300';
-                                    if (row.textBrand) textColor = 'text-brand-secondary font-bold text-base';
-                                    if (row.bold && !row.textBrand) textColor = 'text-white font-bold';
-
-                                    return (
-                                        <td key={scenario} className={`px-4 py-3 text-right ${textColor}`}>
-                                            {formatted}
-                                        </td>
-                                    );
-                                })}
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-            <p className="text-xs text-gray-400 mt-2 italic">*Calculations assume {appreciationRate}% annual appreciation and 8% total closing costs (realtor fees + transfer tax). Buyer-side closing costs and maintenance are not included.</p>
-        </div>
-    );
-};
-
-export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results, isLoading, setIsLoading, appreciationRate, includeCarryingCosts, setIncludeCarryingCosts }) => {
-  const [insights, setInsights] = useState<Insight[]>([]);
-
-  useEffect(() => {
-    if (params && results) {
-      const fetchInsights = async () => {
-        setIsLoading(true);
-        try {
-          const insightsString = await getMortgageInsights(params, results, appreciationRate, includeCarryingCosts);
-          setInsights(JSON.parse(insightsString));
-        } catch (error) {
-          console.error("Failed to parse Gemini insights:", error);
-          setInsights([
-            {
-              title: "Error Parsing",
-              tip: "Could not parse insights. The AI may have returned an unexpected format."
-            }
-          ]);
-        } finally {
-          setIsLoading(false);
-        }
-      };
-      fetchInsights();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params, results, appreciationRate, includeCarryingCosts]); // Re-run when rate or cost basis changes
+export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results, isLoading, setIsLoading, appreciationRate, includeCarryingCosts }) => {
+  const [insights, setInsights] = useState<Insight[] | null>(null);
+  // What the current insights were generated from, so a stale analysis can be flagged
+  const [analysedFor, setAnalysedFor] = useState<string | null>(null);
 
   if (!params || !results) return null;
+
+  const currentInputs = JSON.stringify([params, appreciationRate, includeCarryingCosts]);
+  const isStale = insights !== null && analysedFor !== currentInputs;
+
+  const generate = async () => {
+    setIsLoading(true);
+    try {
+      const insightsString = await getMortgageInsights(params, results, appreciationRate, includeCarryingCosts);
+      setInsights(JSON.parse(insightsString));
+    } catch (error) {
+      console.error('Failed to parse Gemini insights:', error);
+      setInsights([{ title: 'Error Parsing', tip: 'Could not parse insights. The AI may have returned an unexpected format.' }]);
+    } finally {
+      setAnalysedFor(currentInputs);
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="mt-8 bg-gradient-to-br from-brand-primary to-brand-dark p-6 md:p-8 rounded-2xl shadow-lg text-white">
@@ -204,19 +103,30 @@ export const GeminiInsights: React.FC<GeminiInsightsProps> = ({ params, results,
             <p className="text-brand-secondary text-sm opacity-90">Analyzing Equity, Net Proceeds (after 8% fees), and Interest Costs</p>
         </div>
       </div>
-      
+
       {isLoading ? (
         <div className="flex flex-col justify-center items-center h-48 space-y-4">
             <div className="animate-spin rounded-full h-10 w-10 border-4 border-brand-secondary border-t-transparent"></div>
             <p className="text-brand-light animate-pulse">Running financial simulations...</p>
         </div>
+      ) : insights === null ? (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <p className="text-sm text-brand-light">Get a plain-language read on these numbers. It runs when you ask, so changing inputs does not trigger a new request.</p>
+            <button type="button" onClick={generate} className="shrink-0 bg-brand-secondary text-brand-dark font-bold py-2 px-5 rounded-lg hover:bg-yellow-500 transition">
+                Generate analysis
+            </button>
+        </div>
       ) : (
         <>
+            {isStale && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 rounded-lg bg-white/10 p-3">
+                    <p className="text-sm">Your numbers have changed since this analysis was written.</p>
+                    <button type="button" onClick={generate} className="shrink-0 bg-brand-secondary text-brand-dark font-bold py-1.5 px-4 rounded-lg text-sm">Regenerate</button>
+                </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {insights.map((insight, index) => <InsightCard key={index} insight={insight} />)}
             </div>
-            
-            <FinancialBreakdown params={params} results={results} appreciationRate={appreciationRate} includeCarryingCosts={includeCarryingCosts} setIncludeCarryingCosts={setIncludeCarryingCosts} />
         </>
       )}
     </div>

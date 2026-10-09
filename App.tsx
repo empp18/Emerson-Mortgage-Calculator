@@ -4,6 +4,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CalculatorForm } from './components/CalculatorForm';
 import { GeminiInsights } from './components/GeminiInsights';
+import { FinancialBreakdown } from './components/FinancialBreakdown';
+import { WalkAwayCard, PlanCards, BalanceChartCard } from './components/ResultsOverview';
 import { InfoTooltip } from './components/ui/InfoTooltip';
 import { calculateAllScenarios, annualExtraPaymentFor } from './services/mortgageCalculator';
 import { getScenarioSnapshots } from './services/geminiService';
@@ -212,7 +214,7 @@ const PaymentBreakdown: React.FC<{ results: CalculationResults }> = ({ results }
     );
 };
 
-const AmortizationSchedule: React.FC<{ results: CalculationResults, params: MortgageParams, appreciationRate: number, setAppreciationRate: (rate: number) => void }> = ({ results, params, appreciationRate, setAppreciationRate }) => {
+const AmortizationSchedule: React.FC<{ results: CalculationResults, params: MortgageParams, appreciationRate: number }> = ({ results, params, appreciationRate }) => {
     const [activeTab, setActiveTab] = useState<'monthly' | 'biWeekly' | 'biWeeklyWithExtra'>('monthly');
     const [chartTab, setChartTab] = useState<'balance' | 'equity'>('balance');
     const [equityScenario, setEquityScenario] = useState<'monthly' | 'biWeekly' | 'biWeeklyWithExtra'>('monthly');
@@ -403,16 +405,6 @@ const AmortizationSchedule: React.FC<{ results: CalculationResults, params: Mort
                 ) : (
                     <>
                         <div className="flex flex-wrap justify-center items-center gap-2 sm:space-x-4 mb-4 absolute top-0 left-0 right-0 z-10">
-                            <div className="flex items-center rounded-md p-1">
-                                <span className="text-xs text-gray-600 mr-2 font-medium">Appreciation %</span>
-                                <input 
-                                    type="number" 
-                                    value={appreciationRate} 
-                                    onChange={(e) => setAppreciationRate(parseFloat(e.target.value))} 
-                                    className="w-16 text-sm border-gray-300 rounded-md shadow-sm focus:border-brand-primary focus:ring focus:ring-brand-primary focus:ring-opacity-50 p-1 bg-white text-gray-900"
-                                    step="0.1"
-                                />
-                            </div>
                             <select 
                                 value={equityScenario} 
                                 onChange={(e) => setEquityScenario(e.target.value as any)}
@@ -1040,36 +1032,47 @@ export default function App() {
       </header>
 
       <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div id="main-content">
-          <CalculatorForm onCalculate={handleCalculate} isLoading={isLoading} />
-          
-          {results && params && (
-            <div id="results-container" className="mt-8">
+        <div id="main-content" className="lg:grid lg:grid-cols-[360px_minmax(0,1fr)] lg:gap-8 lg:items-start">
+          <aside className="mb-8 lg:mb-0 lg:sticky lg:top-6">
+            <CalculatorForm onCalculate={handleCalculate} appreciationRate={appreciationRate} onAppreciationRateChange={setAppreciationRate} />
+          </aside>
+
+          <div className="min-w-0 space-y-6">
+            {results && params && (
+              <div id="results-container" className="space-y-6">
                 <ResultHeadline params={params} results={results} appreciationRate={appreciationRate} includeCarryingCosts={includeCarryingCosts} />
+                <WalkAwayCard params={params} results={results} appreciationRate={appreciationRate} includeCarryingCosts={includeCarryingCosts} onIncludeCarryingCostsChange={setIncludeCarryingCosts} />
+                <PlanCards params={params} results={results} appreciationRate={appreciationRate} includeCarryingCosts={includeCarryingCosts} />
+                <BalanceChartCard params={params} results={results} />
 
-                {/* Monthly Payment Breakdown */}
-                <div className="mb-8">
+                <details className="group bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-brand-light">
+                  <summary className="cursor-pointer font-serif text-xl font-semibold text-brand-dark">Show the math</summary>
+                  <div className="mt-6">
+                    <FinancialBreakdown params={params} results={results} appreciationRate={appreciationRate} includeCarryingCosts={includeCarryingCosts} />
+                  </div>
+                </details>
+
+                <details className="group bg-white rounded-2xl shadow-lg p-6 md:p-8 border border-brand-light">
+                  <summary className="cursor-pointer font-serif text-xl font-semibold text-brand-dark">Payment details, comparison and schedule</summary>
+                  <div className="mt-6 space-y-8">
                     <PaymentBreakdown results={results} />
-                </div>
-
-                {/* Grid for Loan Details and Comparison Table */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-1">
-                         <LoanDetails params={params} />
-                    </div>
-                    <div className="lg:col-span-2">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      <div className="lg:col-span-1">
+                        <LoanDetails params={params} />
+                      </div>
+                      <div className="lg:col-span-2">
                         <ComparisonTable results={results} params={params} />
+                      </div>
                     </div>
-                </div>
+                    <AmortizationSchedule results={results} params={params} appreciationRate={appreciationRate} />
+                  </div>
+                </details>
+              </div>
+            )}
 
-                <div className="mt-8">
-                    <AmortizationSchedule results={results} params={params} appreciationRate={appreciationRate} setAppreciationRate={setAppreciationRate} />
-                </div>
+            <div className="no-print">
+              <GeminiInsights params={params} results={results} isLoading={isLoading} setIsLoading={setIsLoading} appreciationRate={appreciationRate} includeCarryingCosts={includeCarryingCosts} />
             </div>
-          )}
-
-          <div className="no-print">
-            <GeminiInsights params={params} results={results} isLoading={isLoading} setIsLoading={setIsLoading} appreciationRate={appreciationRate} includeCarryingCosts={includeCarryingCosts} setIncludeCarryingCosts={setIncludeCarryingCosts} />
           </div>
         </div>
       </main>
